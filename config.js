@@ -12,7 +12,7 @@ window.AMICIAL_ECOUTES_CONFIG = {
 
   // ---- Site SharePoint qui héberge les listes ---------------------------
   siteHostname: "assoamicial.sharepoint.com",
-  sitePath: "/sites/A-COMPLETER",       // ⬅ ex : "/sites/Qualite" (partie de l'adresse du site après le nom de domaine)
+  sitePath: "/sites/Communication",       // ⬅ ex : "/sites/Qualite" (partie de l'adresse du site après le nom de domaine)
 
   // ---- Noms des listes (créées automatiquement par l'assistant) ----------
   listName: "Ecoutes telephoniques",
