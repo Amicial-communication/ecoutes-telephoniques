@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Écoutes téléphoniques — Amicial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Poppins:wght@400;500;600&family=PT+Serif:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/msal-browser.min.js"></script>
+<!-- Paramètres propres à Amicial (connexion, site SharePoint, logo) : à modifier dans config.js uniquement -->
+<script src="config.js"></script>
+<style>
+/* =====================================================================
+   Charte graphique Amicial 2024
+   Oregon blue #3E5A7F · Atomic tangerine #F29559 · Light blue #C7E0E4
+   Bone #E3DBC8 · Fern green #568259
+   Titres Open Sans Bold · Sous-titres Poppins · Texte PT Serif
+   ===================================================================== */
+:root{
+  --oregon:#3E5A7F; --oregon-dark:#2C4260; --oregon-ink:#1F2E42;
+  --tangerine:#F29559; --tangerine-soft:#FCE6D6;
+  --lightblue:#C7E0E4; --lightblue-soft:#E9F3F5;
+  --bone:#E3DBC8; --bone-soft:#F6F3EC;
+  --fern:#568259; --fern-soft:#E4EEE4;
+  --alert:#B5523B; --alert-soft:#F7E3DD;
+  --paper:#FFFFFF; --ink:#22303F; --ink-soft:#5E6B78; --line:#DCE3E8;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(31,46,66,.06), 0 6px 20px -10px rgba(31,46,66,.22);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bone-soft);color:var(--ink);font-family:'Open Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:'Open Sans',sans-serif;font-weight:700;color:var(--oregon-ink);margin:0}
+.serif{font-family:'PT Serif',Georgia,serif}
+button{font-family:inherit}
+
+/* ---------- top bar (logo sur fond blanc) ---------- */
+.topbar{background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.topbar-inner{max-width:1040px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.brand img{height:38px;width:auto;display:block}
+.brand-text{font-weight:700;font-size:20px;color:var(--oregon)}
+.brand-sep{width:1px;height:30px;background:var(--line)}
+.app-name{font-family:'Poppins',sans-serif;font-size:13.5px;font-weight:500;color:var(--ink-soft);white-space:nowrap}
+.user-chip{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft)}
+.mode-badge{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:20px}
+.mode-badge.sp{background:var(--fern-soft);color:var(--fern)}
+.mode-badge.local{background:var(--tangerine-soft);color:#A4521E}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--lightblue);color:var(--oregon-ink);font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+
+#app{max-width:1040px;margin:0 auto;padding:24px 20px 90px}
+
+/* ---------- hero ---------- */
+.hero{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:24px 28px;margin-bottom:20px;border-left:6px solid var(--oregon);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-30px;top:-30px;width:160px;height:160px;border-radius:50%;background:var(--lightblue-soft)}
+.hero::before{content:"";position:absolute;right:70px;bottom:-50px;width:90px;height:90px;border-radius:50%;background:var(--tangerine-soft);z-index:0}
+.hero>*{position:relative;z-index:1}
+.eyebrow{font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tangerine);margin-bottom:6px}
+.hero h1{font-size:25px;margin-bottom:6px}
+.hero p{margin:0;color:var(--ink-soft);font-family:'PT Serif',serif;font-size:14.5px;max-width:640px}
+
+.banner{border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start}
+.banner.warn{background:var(--tangerine-soft);color:#7A3D14}
+.banner.info{background:var(--lightblue-soft);color:var(--oregon-ink)}
+.banner.err{background:var(--alert-soft);color:var(--alert)}
+.banner b{font-weight:700}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--paper);padding:5px;border-radius:12px;box-shadow:var(--shadow);width:fit-content;max-width:100%;overflow-x:auto}
+.tab-btn{border:none;background:transparent;padding:9px 18px;border-radius:8px;font-weight:700;font-size:13.5px;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+.tab-btn.active{background:var(--oregon);color:#fff}
+.tab-btn:not(.active):hover{background:var(--lightblue-soft);color:var(--oregon-ink)}
+
+/* ---------- sections ---------- */
+.section{background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden;border:1px solid var(--line)}
+.section-head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--lightblue-soft);border-bottom:1px solid var(--line)}
+.section-num{width:28px;height:28px;border-radius:8px;background:var(--oregon);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.section-head h2{font-family:'Poppins',sans-serif;font-weight:600;font-size:16px}
+.section-head .sub{margin-left:auto;font-size:12px;color:var(--ink-soft)}
+.section-body{padding:20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 20px}
+
+.field{margin-bottom:20px}
+.field:last-child{margin-bottom:0}
+.field-label{font-weight:700;font-size:13.5px;margin-bottom:8px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.req{color:var(--tangerine);font-weight:800}
+.hint{font-weight:400;color:var(--ink-soft);font-size:12px}
+.field.missing .field-label{color:var(--alert)}
+.field.missing input,.field.missing select,.field.missing .choices{outline:2px solid var(--alert);outline-offset:2px;border-radius:9px}
+
+input[type=text],input[type=date],input[type=time],input[type=number],input[type=search],textarea,select{
+  width:100%;font-family:'Open Sans',sans-serif;font-size:14px;color:var(--ink);padding:9px 12px;border-radius:9px;border:1.5px solid var(--line);background:#FCFCFB}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--oregon);background:#fff}
+textarea{resize:vertical;min-height:60px;font-family:'PT Serif',serif;font-size:14px}
+
+.choices{display:flex;gap:8px;flex-wrap:wrap}
+.choice{flex:1;min-width:84px;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;border-radius:9px;border:1.5px solid var(--line);background:#FCFCFB;cursor:pointer;font-weight:700;font-size:13.5px;color:var(--ink);transition:all .12s ease}
+.choice:hover{border-color:var(--oregon)}
+.choice .ico{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.choice.oui .ico{background:var(--fern-soft);color:var(--fern)}
+.choice.non .ico{background:var(--alert-soft);color:var(--alert)}
+.choice.oui.checked{border-color:var(--fern);background:var(--fern-soft)}
+.choice.non.checked{border-color:var(--alert);background:var(--alert-soft)}
+.choice.na{flex:0 0 auto;color:var(--ink-soft);font-weight:600}
+.choice.na.checked{border-color:var(--ink-soft);background:#EEF0F2;color:var(--ink)}
+.choice.opt.checked,.choice.scale.checked{background:var(--oregon);border-color:var(--oregon);color:#fff}
+.choice.scale{min-width:44px}
+.choice.opt{flex:0 1 auto}
+.scale-caption{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-top:4px;padding:0 2px}
+.comment-box{margin-top:10px;display:none}
+.comment-box.show{display:block}
+.inline-other{margin-top:8px;display:none}
+.inline-other.show{display:block}
+.hidden{display:none !important}
+
+.submit-bar{position:sticky;bottom:14px;margin-top:20px;background:var(--paper);border-radius:14px;box-shadow:0 4px 30px rgba(31,46,66,.22);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid var(--line);z-index:20}
+.progress{flex:1;min-width:0}
+.progress-txt{font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:5px}
+.progress-bar{height:6px;background:var(--lightblue-soft);border-radius:4px;overflow:hidden}
+.progress-bar div{height:100%;background:var(--tangerine);transition:width .2s ease}
+.btn{border:none;padding:10px 18px;border-radius:9px;font-weight:700;font-size:13.5px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .15s ease}
+.btn-primary{background:var(--oregon);color:#fff}
+.btn-primary:hover{background:var(--oregon-dark)}
+.btn-primary:disabled{background:#B9C2CC;cursor:not-allowed}
+.btn-ghost{background:var(--paper);color:var(--oregon);border:1.5px solid var(--line)}
+.btn-ghost:hover{border-color:var(--oregon)}
+.btn-danger{background:none;color:var(--alert);padding:8px 4px}
+.btn-sm{padding:7px 12px;font-size:12.5px}
+
+.toast{position:fixed;top:76px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--oregon-ink);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600;font-size:13.5px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .25s ease;z-index:60;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- toolbars & stats ---------- */
+.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.filters select,.filters input{width:auto;min-width:150px;max-width:220px;padding:8px 10px;font-size:13px}
+.filters label.chk{font-size:12.5px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;cursor:pointer}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:var(--paper);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);border:1px solid var(--line);border-top:4px solid var(--lightblue)}
+.kpi .num{font-weight:800;font-size:26px;color:var(--oregon-ink);line-height:1.2}
+.kpi .lbl{font-family:'Poppins',sans-serif;font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+.kpi .sub{font-size:11px;color:var(--ink-soft);margin-top:4px}
+
+.card{background:var(--paper);border-radius:14px;box-shadow:var(--shadow);border:1px solid var(--line);padding:18px 20px;margin-bottom:16px;break-inside:avoid}
+.card h3{font-family:'Poppins',sans-serif;font-weight:600;font-size:15px;margin-bottom:4px}
+.card .card-sub{font-size:12px;color:var(--ink-soft);margin-bottom:14px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chart-wrap{position:relative;height:240px}
+
+.bar-row{display:grid;grid-template-columns:minmax(120px,210px) 1fr 52px 40px;gap:10px;align-items:center;margin-bottom:9px;font-size:12.5px}
+.bar-row:last-child{margin-bottom:0}
+.bar-label{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-bg{height:10px;background:var(--lightblue-soft);border-radius:6px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px}
+.bar-val{text-align:right;font-weight:800}
+.bar-n{text-align:right;color:var(--ink-soft);font-size:11px}
+
+table.crit{width:100%;border-collapse:collapse;font-size:12.5px}
+table.crit th{text-align:left;font-family:'Poppins',sans-serif;font-weight:500;color:var(--ink-soft);font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--line)}
+table.crit td{padding:8px;border-bottom:1px solid #EEF1F3;vertical-align:middle}
+table.crit td.num{text-align:right;font-weight:700;white-space:nowrap}
+table.crit .mini{height:8px;background:var(--lightblue-soft);border-radius:5px;overflow:hidden;min-width:80px}
+table.crit .mini div{height:100%;border-radius:5px}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:12px;background:var(--lightblue-soft);color:var(--oregon)}
+
+.verbatim{border-left:3px solid var(--tangerine);background:var(--bone-soft);border-radius:0 8px 8px 0;padding:9px 12px;margin-bottom:8px}
+.verbatim .vb-meta{font-size:10.5px;color:var(--ink-soft);font-weight:700;margin-bottom:3px;text-transform:uppercase;letter-spacing:.02em}
+.verbatim .vb-text{font-family:'PT Serif',serif;font-size:13.5px}
+.verbatim.pos{border-left-color:var(--fern)}
+
+/* ---------- history ---------- */
+.entry{background:var(--paper);border-radius:12px;box-shadow:var(--shadow);border:1px solid var(--line);margin-bottom:10px;overflow:hidden}
+.entry.deleted{opacity:.6}
+.entry-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;gap:10px}
+.entry-left{display:flex;align-items:center;gap:12px;min-width:0}
+.score-badge{width:48px;height:48px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff}
+.entry-title{font-weight:700;font-size:14px}
+.entry-sub{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.chev{transition:transform .15s ease;flex-shrink:0}
+.entry.open .chev{transform:rotate(180deg)}
+.entry-detail{display:none;border-top:1px solid var(--line);padding:14px 16px 16px}
+.entry.open .entry-detail{display:block}
+.sec-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.sec-mini div{background:var(--bone-soft);border-radius:8px;padding:8px 10px;font-size:11.5px;color:var(--ink-soft)}
+.sec-mini b{display:block;font-size:16px;color:var(--oregon-ink)}
+.detail-grid{display:grid;grid-template-columns:1fr auto;gap:6px 18px;font-size:12.5px}
+.detail-grid .k{color:var(--ink-soft)}
+.detail-grid .v{font-weight:700;text-align:right}
+.detail-grid .c{grid-column:1 / -1;font-family:'PT Serif',serif;color:var(--ink);background:var(--bone-soft);border-radius:6px;padding:6px 10px;margin-top:-2px}
+.v.oui{color:var(--fern)} .v.non{color:var(--alert)} .v.na{color:var(--ink-soft);font-weight:600}
+.meta{font-size:11.5px;color:var(--ink-soft);margin-top:14px;padding-top:10px;border-top:1px dashed var(--line)}
+.entry-actions{display:flex;gap:8px;margin-top:10px;align-items:center}
+.empty{text-align:center;padding:50px 20px;color:var(--ink-soft)}
+.empty .big{font-weight:700;font-size:17px;color:var(--oregon-ink);margin-bottom:6px}
+
+.print-head{display:none}
+.st-ok{color:var(--fern);font-weight:700}
+.st-ko{color:var(--alert);font-weight:700}
+.install-log{background:var(--oregon-ink);color:#E9F3F5;font-family:ui-monospace,Consolas,monospace;font-size:12px;border-radius:8px;padding:10px 12px;white-space:pre-wrap;max-height:220px;overflow:auto;margin-top:12px}
+.install-log:empty{display:none}
+.steps-num{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--tangerine);color:#fff;font-weight:800;font-size:12px;align-items:center;justify-content:center;margin-right:8px}
+
+@media (max-width:760px){
+  .kpis{grid-template-columns:1fr 1fr}
+  .two-col,.grid2,.grid3{grid-template-columns:1fr}
+  .sec-mini{grid-template-columns:1fr 1fr}
+  .bar-row{grid-template-columns:110px 1fr 46px 34px}
+  .app-name,.brand-sep{display:none}
+  .filters select,.filters input{min-width:0;max-width:none;flex:1 1 140px}
+  .submit-bar{flex-direction:column;align-items:stretch}
+}
+
+/* ---------- impression / PDF de la synthèse ---------- */
+@media print{
+  @page{size:A4;margin:12mm}
+  body{background:#fff;font-size:11.5px}
+  .topbar,.tabs,.hero,.toolbar,.submit-bar,.toast,#view-form,#view-hist,.banner,.no-print{display:none !important}
+  #view-synth{display:block !important}
+  #app{padding:0;max-width:none}
+  .print-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--oregon);padding-bottom:8px;margin-bottom:14px}
+  .print-head h1{font-size:18px}
+  .print-head .ph-sub{font-size:11px;color:var(--ink-soft)}
+  .print-head img{height:32px}
+  .card,.kpi{box-shadow:none}
+  .kpis{grid-template-columns:repeat(5,1fr)}
+  .two-col{grid-template-columns:1fr 1fr}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span id="brand-logo"></span>
+      <span class="brand-sep"></span>
+      <span class="app-name">Écoutes téléphoniques</span>
+    </div>
+    <div class="user-chip" id="user-chip"></div>
+  </div>
+</header>
+
+<div id="app">
+  <div class="hero">
+    <div class="eyebrow">Contrôle qualité · Accueil téléphonique</div>
+    <h1>Écoutes téléphoniques aléatoires</h1>
+    <p>Grille d'évaluation de l'accueil téléphonique des agences : traitement de l'appel, gestion des prospects, procédure interne et posture professionnelle.</p>
+  </div>
+
+  <div id="banners"></div>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="form">Nouvelle écoute</button>
+    <button class="tab-btn" data-tab="hist">Historique</button>
+    <button class="tab-btn" data-tab="synth">Synthèse</button>
+  </nav>
+
+  <div id="view-form"></div>
+  <div id="view-hist" class="hidden"></div>
+  <div id="view-synth" class="hidden"></div>
+  <div id="view-install" class="hidden"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="import-file" accept=".json,.csv" class="hidden">
+
+<script>
+/* =====================================================================
+   1. CONFIGURATION PAR DÉFAUT — les valeurs réelles sont dans config.js
+   ===================================================================== */
+const CONFIG_DEFAULTS = {
+  // --- Connexion Microsoft 365 (SSO) et liste SharePoint ---
+  // Laisser tenantId / clientId vides = mode local (test sur un seul poste).
+  tenantId: "",                         // ID du locataire Entra ID d'Amicial
+  clientId: "",                         // ID de l'application enregistrée par le SI
+  siteHostname: "",                     // ex : "amicial.sharepoint.com"
+  sitePath: "",                         // ex : "/sites/Qualite"
+  listName: "Ecoutes telephoniques",    // nom de la liste SharePoint des écoutes
+
+  // --- Listes de référence SharePoint (tenues à jour par le service Qualité) ---
+  refLists: {
+    agences: "Ref Agences",             // colonnes : Title (nom de l'agence), Inactif (oui/non)
+    agents:  "Ref Agents",              // colonnes : Title (Prénom Nom), Agences (recherche multiple vers Ref Agences), Inactif
+    motifs:  "Ref Motifs"               // colonnes : Title (libellé), Ordre (nombre), Inactif
+  },
+
+  // --- Listes de secours (mode local uniquement, ou si une liste SharePoint est absente) ---
+  // Vides = saisie libre avec suggestions.
+  agences: [],                          // ex : ["Avignon", "Carpentras", "Orange"]
+  agents: [],                           // ex : [{nom:"Marie Dupont", agences:["Avignon","Orange"]}]
+  motifs: ["Demande d'information","Demande de prestation","Planning / intervention","Facturation","Réclamation","Urgence","Autre"],
+
+  // --- Paramètres ---
+  seuilDecrochageSec: 15,               // objectif de délai de décrochage (secondes)
+  logoUrl: "",                          // URL ou data:image du logo Amicial officiel
+  redirectUri: ""                       // vide = adresse de la page (sans « index.html »)
+};
+const USER_CONFIG = (typeof window!=='undefined' && window.AMICIAL_ECOUTES_CONFIG) || {};
+const CONFIG = Object.assign({}, CONFIG_DEFAULTS, USER_CONFIG,
+  { refLists: Object.assign({}, CONFIG_DEFAULTS.refLists, USER_CONFIG.refLists||{}) });
+
+/* =====================================================================
+   2. GRILLE D'ÉVALUATION
+   ===================================================================== */
+const SECTIONS = [
+  {id:'accueil',   label:'Accueil'},
+  {id:'prospect',  label:'Gestion des prospects'},
+  {id:'procedure', label:'Procédure interne'},
+  {id:'posture',   label:'Posture professionnelle'}
+];
+// type : yn (Oui/Non) ou scale (1 à 5) · na : option « Non concerné » autorisée
+// cond : 'prospect' = critère applicable seulement si l'appel est une demande de prestation
+const CRITERIA = [
+  {key:'greeting',        section:'accueil',   type:'yn',    na:false, label:"Présentation et utilisation de la formule d'accueil", short:"Formule d'accueil"},
+  {key:'prospectQualif',  section:'prospect',  type:'yn',    na:false, cond:'prospect', label:"Qualification de l'appel comme un prospect", short:"Qualification prospect"},
+  {key:'prospectContact', section:'prospect',  type:'yn',    na:false, cond:'prospect', label:"Recueil des informations de contact", short:"Recueil des coordonnées"},
+  {key:'prospectNeeds',   section:'prospect',  type:'yn',    na:false, cond:'prospect', label:"Analyse du besoin", short:"Analyse du besoin"},
+  {key:'prospectOffer',   section:'prospect',  type:'yn',    na:false, cond:'prospect', label:"Présentation des prestations adaptées", short:"Prestations présentées"},
+  {key:'circuitRespect',  section:'procedure', type:'scale', na:false, label:"Respect du circuit de traitement de l'appel", short:"Circuit de traitement"},
+  {key:'orientation',     section:'procedure', type:'yn',    na:true,  label:"Orientation de l'appel vers le bon interlocuteur", short:"Orientation"},
+  {key:'eiProcedure',     section:'procedure', type:'scale', na:true,  label:"Application de la procédure EI / réclamations / urgences", short:"Procédure EI / réclam. / urgences"},
+  {key:'traceability',    section:'procedure', type:'scale', na:false, label:"Traçabilité de l'appel", short:"Traçabilité"},
+  {key:'courtesy',        section:'posture',   type:'scale', na:false, label:"Attitude courtoise et respectueuse", short:"Courtoisie"},
+  {key:'activeListening', section:'posture',   type:'scale', na:false, label:"Écoute active", short:"Écoute active"},
+  {key:'helpfulPosture',  section:'posture',   type:'yn',    na:false, label:"Posture aidante et orientation vers une solution", short:"Posture aidante"},
+  {key:'infoAccuracy',    section:'posture',   type:'yn',    na:true,  label:"Informations transmises complètes et exactes", short:"Infos complètes et exactes"},
+  {key:'summarizeActions',section:'posture',   type:'scale', na:false, label:"Résumé des actions prévues à l'interlocuteur", short:"Résumé des actions"},
+  {key:'politeClosing',   section:'posture',   type:'scale', na:false, label:"Prise de congé courtoise", short:"Prise de congé"}
+];
+const CRIT = Object.fromEntries(CRITERIA.map(c=>[c.key,c]));
+const PROFILES = ['Personne accompagnée','Prospect','Famille / entourage / aidant','Partenaire','Salarié','Autre'];
+// Référentiels effectivement utilisés (chargés au démarrage depuis SharePoint ou CONFIG)
+const REF = { agences:[], agents:[], motifs:[], urls:{} };
+const DURATIONS = [['<2','Moins de 2 min'],['2-5','2 à 5 min'],['>5','Plus de 5 min']];
+
+/* =====================================================================
+   3. OUTILS
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg, ms=2600){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'), ms); }
+function parseDay(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return (y&&m&&d) ? new Date(y,m-1,d) : null; }
+function frDate(s){ const d=parseDay(s); return d ? d.toLocaleDateString('fr-FR') : '—'; }
+function frDateTime(iso){ if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('fr-FR')+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmt(n, dec=0){ return n==null || isNaN(n) ? '—' : n.toLocaleString('fr-FR',{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+function pct(n){ return n==null ? '—' : fmt(n)+' %'; }
+function normName(s){ return String(s||'').trim().replace(/\s+/g,' ').toLowerCase().replace(/(^|[\s\-'])([a-zà-ÿ])/g,(m,a,b)=>a+b.toUpperCase()); }
+function initials(name){ const parts=String(name||'').trim().split(/\s+/).filter(Boolean); return parts.map(p=>p[0].toUpperCase()+'.').join(' '); }
+function colorFor(p){ if(p==null) return '#9AA5AF'; if(p>=80) return 'var(--fern)'; if(p>=60) return 'var(--tangerine)'; return 'var(--alert)'; }
+function hexFor(p){ if(p==null) return '#9AA5AF'; if(p>=80) return '#568259'; if(p>=60) return '#F29559'; return '#B5523B'; }
+function uid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* =====================================================================
+   4. CALCUL DES SCORES
+   Oui = 100, Non = 0 · échelle 1→0, 2→25, 3→50, 4→75, 5→100 · N/A exclu
+   ===================================================================== */
+function isApplicable(data, c){ return !(c.cond==='prospect' && data.isProspect!=='oui'); }
+function critPoints(data, c){
+  if(!isApplicable(data,c)) return null;
+  const v = data.crit?.[c.key];
+  if(v==null || v==='' || v==='na') return null;
+  if(c.type==='yn') return v==='oui' ? 100 : (v==='non' ? 0 : null);
+  return (Number(v)-1)/4*100;
+}
+function scores(data){
+  const bySec = {}; const all=[];
+  SECTIONS.forEach(s=>bySec[s.id]=[]);
+  CRITERIA.forEach(c=>{ const p=critPoints(data,c); if(p!=null){ bySec[c.section].push(p); all.push(p); } });
+  const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const sections = {}; SECTIONS.forEach(s=>sections[s.id]=avg(bySec[s.id]));
+  return {global:avg(all), sections};
+}
+function isVigilance(data, c){
+  const v = data.crit?.[c.key];
+  if(!isApplicable(data,c)) return false;
+  return (c.type==='yn' && v==='non') || (c.type==='scale' && v!=='na' && Number(v)<=2);
+}
+
+/* =====================================================================
+   5. STOCKAGE — adaptateur SharePoint (Graph) ou local
+   ===================================================================== */
+const SP_ENABLED = !!(CONFIG.tenantId && CONFIG.clientId && CONFIG.siteHostname && CONFIG.sitePath);
+const SCOPES = ['Sites.ReadWrite.All'];          // usage courant
+const SCOPES_INSTALL = ['Sites.Manage.All'];     // création des listes (assistant d'installation)
+function redirectUri(){ return CONFIG.redirectUri || (location.origin + location.pathname.replace(/index\.html$/,'')); }
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+
+const SharePointStore = {
+  mode:'sharepoint', msal:null, account:null, siteId:null,
+  async init(){
+    if(this._initResult) return this._initResult;
+    if(typeof msal==='undefined') throw new Error("La bibliothèque de connexion Microsoft n'a pas pu être chargée.");
+    this.msal = new msal.PublicClientApplication({
+      auth:{ clientId:CONFIG.clientId, authority:'https://login.microsoftonline.com/'+CONFIG.tenantId, redirectUri: redirectUri() },
+      cache:{ cacheLocation:'localStorage' }
+    });
+    if(this.msal.initialize) await this.msal.initialize();
+    const res = await this.msal.handleRedirectPromise();
+    this.account = res?.account || this.msal.getAllAccounts()[0];
+    if(!this.account){ await this.msal.loginRedirect({scopes:SCOPES}); return new Promise(()=>{}); }
+    const site = await this.graph(`/sites/${CONFIG.siteHostname}:${CONFIG.sitePath}`);
+    this.siteId = site.id;
+    return (this._initResult = { user: this.account.name || this.account.username });
+  },
+  async token(scopes=SCOPES){
+    try{ return (await this.msal.acquireTokenSilent({scopes, account:this.account})).accessToken; }
+    catch(e){ await this.msal.acquireTokenRedirect({scopes, account:this.account}); throw e; }
+  },
+  async graph(path, opts={}){
+    const t = await this.token(opts.scopes || SCOPES); delete opts.scopes;
+    const url = path.startsWith('http') ? path : GRAPH+path;
+    const r = await fetch(url, {...opts, headers:{Authorization:'Bearer '+t,'Content-Type':'application/json',...(opts.headers||{})}});
+    if(!r.ok){ let detail=''; try{ detail=(await r.json()).error?.message||''; }catch(e){}
+      const err = new Error(`SharePoint a refusé la requête (${r.status}) ${detail}`); err.status=r.status; throw err; }
+    return r.status===204 ? null : r.json();
+  },
+  get listPath(){ return `/sites/${this.siteId}/lists/${encodeURIComponent(CONFIG.listName)}`; },
+  async readRefList(name){
+    const base = `/sites/${this.siteId}/lists/${encodeURIComponent(name)}`;
+    const meta = await this.graph(base+'?$select=webUrl');
+    const out=[]; let next = `${base}/items?expand=fields&$top=500`;
+    while(next){ const page=await this.graph(next); page.value.forEach(it=>out.push(it.fields||{})); next=page['@odata.nextLink']||null; }
+    return { url: meta.webUrl, items: out };
+  },
+  async loadRefs(){
+    const warn=[];
+    const isActive = f => !(f.Inactif===true || f.Inactif==='true' || f.Inactif===1 || f.Actif===false || f.Actif==='false' || f.Actif===0);
+    try{
+      const r = await this.readRefList(CONFIG.refLists.agences); REF.urls.agences=r.url;
+      const byId = {}; r.items.forEach(f=>{ if(f.id) byId[String(f.id)] = f.Title; });
+      this._agenceById = byId;
+      REF.agences = r.items.filter(isActive).map(f=>String(f.Title||'').trim()).filter(Boolean);
+    }catch(e){ warn.push('agences'); }
+    try{
+      const r = await this.readRefList(CONFIG.refLists.agents); REF.urls.agents=r.url;
+      REF.agents = r.items.filter(f=>String(f.Title||'').trim()).map(f=>({
+        nom: String(f.Title).trim(), actif: isActive(f), agences: parseAgences(f.Agences, f.AgencesLookupId, this._agenceById||{}) }));
+    }catch(e){ warn.push('agents'); }
+    try{
+      const r = await this.readRefList(CONFIG.refLists.motifs); REF.urls.motifs=r.url;
+      REF.motifs = r.items.filter(isActive).sort((a,b)=>(Number(a.Ordre)||999)-(Number(b.Ordre)||999)).map(f=>String(f.Title||'').trim()).filter(Boolean);
+    }catch(e){ warn.push('motifs'); }
+    return warn;
+  },
+  toFields(data, deleted=false){
+    const s = scores(data).global;
+    const f = { Title:`${data.callDate||''} · ${data.agent||''}`, DateAppel:data.callDate||'', Agence:data.agence||'', Agent:data.agent||'',
+                Statut: deleted ? 'Supprimée' : 'Active', Donnees: JSON.stringify(data) };
+    if(s!=null) f.Score = Math.round(s*10)/10;
+    return f;
+  },
+  async list(){
+    const out=[]; let next = `${this.listPath}/items?expand=fields&$top=500`;
+    while(next){
+      const page = await this.graph(next);
+      page.value.forEach(it=>{
+        let data={}; try{ data = JSON.parse(it.fields?.Donnees || '{}'); }catch(e){}
+        out.push({ id:it.id, data, meta:{
+          deleted: it.fields?.Statut==='Supprimée',
+          createdBy: it.createdBy?.user?.displayName || '', createdAt: it.createdDateTime,
+          modifiedBy: it.lastModifiedBy?.user?.displayName || '', modifiedAt: it.lastModifiedDateTime }});
+      });
+      next = page['@odata.nextLink'] || null;
+    }
+    return out;
+  },
+  async create(data){ await this.graph(`${this.listPath}/items`, {method:'POST', body:JSON.stringify({fields:this.toFields(data)})}); },
+  async update(id, data){ await this.graph(`${this.listPath}/items/${id}/fields`, {method:'PATCH', body:JSON.stringify(this.toFields(data))}); },
+  async setDeleted(id, deleted){ await this.graph(`${this.listPath}/items/${id}/fields`, {method:'PATCH', body:JSON.stringify({Statut: deleted?'Supprimée':'Active'})}); },
+
+  /* ----- Assistant d'installation : vérifie et crée les listes ----- */
+  async diagnose(){
+    const res=[];
+    for(const spec of listSpecs()){
+      try{
+        const l = await this.graph(`/sites/${this.siteId}/lists/${encodeURIComponent(spec.name)}?$select=id,webUrl,displayName&$expand=columns($select=name)`);
+        const have = new Set((l.columns||[]).map(c=>c.name));
+        res.push({...spec, exists:true, id:l.id, webUrl:l.webUrl, missing: spec.columns.filter(c=>!have.has(c.name)).map(c=>c.name)});
+      }catch(e){
+        if(e.status===404) res.push({...spec, exists:false, missing: spec.columns.map(c=>c.name)});
+        else throw e;
+      }
+    }
+    return { lists:res, ok: res.every(l=>l.exists && !l.missing.length) };
+  },
+  async install(log){
+    const opt = {scopes:SCOPES_INSTALL};
+    let diag = await this.diagnose(); const ids = {};
+    diag.lists.forEach(l=>{ if(l.exists) ids[l.key]=l.id; });
+    for(const spec of listSpecs()){
+      const cur = diag.lists.find(l=>l.key===spec.key);
+      const colDef = c => c.lookup ? {name:c.name, lookup:{listId: ids[c.lookup], columnName:'Title', allowMultipleValues:true}} : c.def;
+      if(!cur.exists){
+        log(`Création de la liste « ${spec.name} »…`);
+        const created = await this.graph(`/sites/${this.siteId}/lists`, {...opt, method:'POST', body:JSON.stringify({
+          displayName: spec.name, list:{template:'genericList'}, columns: spec.columns.map(colDef) })});
+        ids[spec.key] = created.id;
+        if(spec.seed){ for(const f of spec.seed) await this.graph(`/sites/${this.siteId}/lists/${created.id}/items`, {method:'POST', body:JSON.stringify({fields:f})}); log(`  ${spec.seed.length} valeurs initiales ajoutées.`); }
+      } else if(cur.missing.length){
+        for(const name of cur.missing){
+          log(`Ajout de la colonne « ${name} » à « ${spec.name} »…`);
+          await this.graph(`/sites/${this.siteId}/lists/${cur.id}/columns`, {...opt, method:'POST', body:JSON.stringify(colDef(spec.columns.find(c=>c.name===name)))});
+        }
+      }
+    }
+    log('Vérification…');
+    return this.diagnose();
+  },
+  async addRefItems(key, rows){
+    const diag = await this.diagnose(); const l = diag.lists.find(x=>x.key===key);
+    const ag = diag.lists.find(x=>x.key==='agences');
+    let agenceIds = {};
+    if(key==='agents'){
+      const items = await this.readRefList(CONFIG.refLists.agences);
+      items.items.forEach(f=>{ agenceIds[String(f.Title).trim().toLowerCase()] = Number(f.id); });
+    }
+    const existing = new Set((await this.readRefList(l.name)).items.map(f=>String(f.Title||'').trim().toLowerCase()));
+    let added=0, skipped=[], unknown=[];
+    for(const r of rows){
+      if(existing.has(r.title.toLowerCase())){ skipped.push(r.title); continue; }
+      const fields = {Title:r.title};
+      if(key==='agents'){
+        const idsA = r.agences.map(a=>agenceIds[a.toLowerCase()]).filter(Boolean);
+        r.agences.filter(a=>!agenceIds[a.toLowerCase()]).forEach(a=>unknown.push(`${a} (${r.title})`));
+        if(idsA.length){ fields['AgencesLookupId@odata.type']='Collection(Edm.Int32)'; fields.AgencesLookupId=idsA; }
+      }
+      await this.graph(`/sites/${this.siteId}/lists/${l.id}/items`, {method:'POST', body:JSON.stringify({fields})});
+      existing.add(r.title.toLowerCase()); added++;
+    }
+    return {added, skipped, unknown};
+  }
+};
+
+// Structure attendue des listes SharePoint (créées par l'assistant d'installation)
+function listSpecs(){
+  const txt = n => ({name:n, def:{name:n, text:{}}});
+  const inactif = {name:'Inactif', def:{name:'Inactif', boolean:{}}};
+  return [
+    {key:'ecoutes', label:'Écoutes', name:CONFIG.listName, columns:[
+      txt('DateAppel'), txt('Agence'), txt('Agent'),
+      {name:'Score', def:{name:'Score', number:{decimalPlaces:'one'}}},
+      txt('Statut'),
+      {name:'Donnees', def:{name:'Donnees', text:{allowMultipleLines:true, textType:'plain', linesForEditing:6}}} ]},
+    {key:'agences', label:'Agences', name:CONFIG.refLists.agences, columns:[inactif]},
+    {key:'agents', label:"Agents d'accueil", name:CONFIG.refLists.agents, columns:[{name:'Agences', lookup:'agences'}, inactif]},
+    {key:'motifs', label:"Motifs d'appel", name:CONFIG.refLists.motifs, columns:[{name:'Ordre', def:{name:'Ordre', number:{decimalPlaces:'none'}}}, inactif],
+      seed: CONFIG.motifs.map((m,i)=>({Title:m, Ordre:(i+1)*10}))}
+  ];
+}
+
+// Lit la colonne « Agences » quel que soit son format (recherche multiple, choix multiple ou texte « A; B »)
+function parseAgences(val, lookupIds, byId){
+  let out=[];
+  if(Array.isArray(val)) out = val.map(v=> typeof v==='object' && v ? (v.LookupValue ?? byId[String(v.LookupId)]) : v);
+  else if(typeof val==='string') out = val.split(/[;,\n]/);
+  if(!out.length && Array.isArray(lookupIds)) out = lookupIds.map(id=>byId[String(id)]);
+  return out.map(x=>String(x||'').trim()).filter(Boolean);
+}
+function loadLocalRefs(only){
+  const want = k => !only || only.includes(k);
+  if(want('agences')) REF.agences = [...CONFIG.agences];
+  if(want('agents')) REF.agents = CONFIG.agents.map(a=> typeof a==='string' ? {nom:a, agences:[], actif:true} : {nom:a.nom, agences:a.agences||[], actif:a.actif!==false});
+  if(want('motifs')) REF.motifs = [...CONFIG.motifs];
+}
+// Agents proposés pour une agence : ceux qui y sont rattachés (un agent peut couvrir plusieurs agences)
+function agentsFor(agence){
+  const actifs = REF.agents.filter(a=>a.actif);
+  if(!agence) return {list:[], linked:false};
+  const linked = actifs.filter(a=>a.agences.includes(agence));
+  if(linked.length) return {list:linked.map(a=>a.nom).sort((x,y)=>x.localeCompare(y,'fr')), linked:true};
+  return {list:actifs.map(a=>a.nom).sort((x,y)=>x.localeCompare(y,'fr')), linked:false};
+}
+
+const LocalStore = {
+  mode:'local', KEY:'amicial-ecoutes-v2', USER_KEY:'amicial-ecoutes-evaluateur',
+  read(){ try{ return JSON.parse(localStorage.getItem(this.KEY) || '[]'); }catch(e){ return []; } },
+  write(arr){ try{ localStorage.setItem(this.KEY, JSON.stringify(arr)); }catch(e){ throw new Error("Le navigateur bloque l'enregistrement local."); } },
+  user(){ try{ return localStorage.getItem(this.USER_KEY) || ''; }catch(e){ return ''; } },
+  setUser(u){ try{ localStorage.setItem(this.USER_KEY, u); }catch(e){} },
+  async init(){ return { user: this.user() }; },
+  async list(){ return this.read(); },
+  async create(data){ const a=this.read(); const now=new Date().toISOString(); const u=data.evaluator||this.user();
+    a.push({id:uid(), data, meta:{deleted:false, createdBy:u, createdAt:now, modifiedBy:u, modifiedAt:now}}); this.write(a); },
+  async update(id, data){ const a=this.read(); const e=a.find(x=>x.id===id); if(!e) throw new Error('Écoute introuvable');
+    e.data=data; e.meta.modifiedBy=data.evaluator||this.user(); e.meta.modifiedAt=new Date().toISOString(); this.write(a); },
+  async setDeleted(id, deleted){ const a=this.read(); const e=a.find(x=>x.id===id); if(!e) return;
+    e.meta.deleted=deleted; e.meta.modifiedBy=this.user(); e.meta.modifiedAt=new Date().toISOString(); this.write(a); }
+};
+
+let store = SP_ENABLED ? SharePointStore : LocalStore;
+let currentUser = '';
+let entries = [];
+
+async function reload(){ entries = await store.list(); }
+
+/* =====================================================================
+   6. FORMULAIRE
+   ===================================================================== */
+function blankForm(){
+  return { version:2, agence:'', agent:'', evaluator: currentUser, callDate: todayISO(), callTime:'',
+    pickupSec:'', rings:'', duration:'', callerProfile:'', callerProfileOther:'', callerRef:'', motif:'',
+    isProspect:'', crit:{}, comments:{}, strengths:'', improvements:'' };
+}
+let form = blankForm();
+let editingId = null;
+
+function knownValues(field){
+  const set = new Set(entries.filter(e=>!e.meta.deleted).map(e=>e.data[field]).filter(Boolean));
+  return [...set].sort((a,b)=>a.localeCompare(b,'fr'));
+}
+function agenceControl(){
+  if(!REF.agences.length) return refField('agence','Agence',[], "Nom de l'agence");
+  const opts=[...REF.agences].sort((a,b)=>a.localeCompare(b,'fr'));
+  if(form.agence && !opts.includes(form.agence)) opts.push(form.agence);
+  return `<select data-field="agence"><option value="">— Choisir l'agence —</option>${opts.map(o=>`<option ${form.agence===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+}
+function agentControl(){
+  if(!REF.agents.length) return refField('agent','Agent',[], 'Prénom Nom');
+  if(!form.agence) return `<select data-field="agent" disabled><option>Choisir d'abord l'agence</option></select>`;
+  const {list, linked} = agentsFor(form.agence);
+  const opts=[...list]; if(form.agent && !opts.includes(form.agent)) opts.push(form.agent);
+  const hint = linked ? `${list.length} agent${list.length>1?'s':''} assurant l'accueil de cette agence`
+                      : `Aucun agent rattaché à cette agence dans la liste de référence : tous les agents sont proposés`;
+  return `<select data-field="agent"><option value="">— Choisir l'agent —</option>${opts.map(o=>`<option ${form.agent===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
+          <div class="hint" style="margin-top:5px">${hint}</div>`;
+}
+function refField(field, label, configList, placeholder){
+  if(configList.length){
+    const opts = [...configList]; if(form[field] && !opts.includes(form[field])) opts.push(form[field]);
+    return `<select data-field="${field}"><option value="">— Choisir —</option>${opts.map(o=>`<option ${form[field]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  }
+  return `<input type="text" data-field="${field}" list="dl-${field}" placeholder="${esc(placeholder)}" value="${esc(form[field])}">
+          <datalist id="dl-${field}">${knownValues(field).map(v=>`<option value="${esc(v)}">`).join('')}</datalist>`;
+}
+function choiceGroup(key, options, extraClass='opt'){
+  const cur = key in CRIT ? form.crit[key] : form[key];
+  return `<div class="choices" data-group="${key}">${options.map(([v,l,cls])=>
+    `<button type="button" class="choice ${cls||extraClass} ${String(cur)===String(v)?'checked':''}" data-key="${key}" data-val="${esc(v)}">${l}</button>`).join('')}</div>`;
+}
+function critField(c){
+  const v = form.crit[c.key];
+  let opts;
+  if(c.type==='yn') opts = [['oui','<span class="ico">✓</span>Oui','oui'],['non','<span class="ico">✕</span>Non','non']];
+  else opts = [1,2,3,4,5].map(n=>[n,String(n),'scale']);
+  if(c.na) opts.push(['na','Non concerné','na']);
+  const showComment = (c.type==='yn' && v==='non') || (c.type==='scale' && v!=='na' && v!=null && Number(v)<=2) || !!form.comments[c.key];
+  return `<div class="field" id="f-${c.key}">
+    <div class="field-label">${esc(c.label)} <span class="req">*</span></div>
+    ${choiceGroup(c.key, opts)}
+    ${c.type==='scale' ? `<div class="scale-caption"><span>1 · Insuffisant</span><span>5 · Excellent</span></div>`:''}
+    <div class="comment-box ${showComment?'show':''}" id="c-${c.key}">
+      <textarea data-comment="${c.key}" placeholder="Commentaire : ce qui a manqué, exemple concret…">${esc(form.comments[c.key]||'')}</textarea>
+    </div>
+  </div>`;
+}
+function sectionBlock(num, sec, inner, sub=''){
+  return `<div class="section"><div class="section-head"><div class="section-num">${num}</div><h2>${sec}</h2>${sub?`<span class="sub">${sub}</span>`:''}</div><div class="section-body">${inner}</div></div>`;
+}
+
+function renderForm(){
+  const el = $('#view-form');
+  const crits = id => CRITERIA.filter(c=>c.section===id && !c.cond).map(critField).join('');
+  const editBanner = editingId ? `<div class="banner info"><div>✎ <b>Modification</b> de l'écoute du ${frDate(form.callDate)} (${esc(form.agent||'agent non renseigné')}). <a href="#" id="cancel-edit">Annuler la modification</a></div></div>` : '';
+  el.innerHTML = `
+    ${editBanner}
+    ${sectionBlock(1, "L'appel", `
+      <div class="grid2">
+        <div class="field" id="f-agence"><div class="field-label">Agence <span class="req">*</span></div><div id="ctl-agence">${agenceControl()}</div></div>
+        <div class="field" id="f-agent"><div class="field-label">Agent d'accueil évalué <span class="req">*</span></div><div id="ctl-agent">${agentControl()}</div></div>
+      </div>
+      <div class="grid3">
+        <div class="field" id="f-callDate"><div class="field-label">Date de l'appel <span class="req">*</span></div><input type="date" data-field="callDate" value="${esc(form.callDate)}" max="${todayISO()}"></div>
+        <div class="field"><div class="field-label">Heure <span class="hint">facultatif</span></div><input type="time" data-field="callTime" value="${esc(form.callTime)}"></div>
+        <div class="field"><div class="field-label">Évaluateur</div><input type="text" data-field="evaluator" value="${esc(form.evaluator)}" ${store.mode==='sharepoint'?'readonly':''} placeholder="Votre nom"></div>
+      </div>
+      <div class="grid2">
+        <div class="field" id="f-pickupSec"><div class="field-label">Délai de décrochage <span class="req">*</span> <span class="hint">en secondes · objectif ≤ ${CONFIG.seuilDecrochageSec} s</span></div><input type="number" min="0" max="600" step="1" data-field="pickupSec" value="${esc(form.pickupSec)}" placeholder="ex : 12"></div>
+        <div class="field"><div class="field-label">Nombre de sonneries <span class="hint">facultatif</span></div><input type="number" min="0" max="30" step="1" data-field="rings" value="${esc(form.rings)}" placeholder="ex : 3"></div>
+      </div>
+      <div class="field" id="f-duration"><div class="field-label">Durée de l'appel <span class="req">*</span></div>${choiceGroup('duration', DURATIONS)}</div>
+      <div class="field" id="f-callerProfile"><div class="field-label">Profil de l'appelant <span class="req">*</span></div>
+        ${choiceGroup('callerProfile', PROFILES.map(p=>[p,esc(p)]))}
+        <div class="inline-other ${form.callerProfile==='Autre'?'show':''}" id="other-profile"><input type="text" data-field="callerProfileOther" placeholder="Préciser le profil" value="${esc(form.callerProfileOther)}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><div class="field-label">Référence de l'appelant <span class="hint">initiales ou n° dossier, pas de nom complet</span></div><input type="text" data-field="callerRef" value="${esc(form.callerRef)}" placeholder="ex : M. D. / dossier 1234" maxlength="40"></div>
+        <div class="field"><div class="field-label">Motif de l'appel <span class="hint">facultatif</span></div><select data-field="motif"><option value="">—</option>${[...REF.motifs, ...(form.motif && !REF.motifs.includes(form.motif)?[form.motif]:[])].map(m=>`<option ${form.motif===m?'selected':''}>${esc(m)}</option>`).join('')}</select></div>
+      </div>
+      ${crits('accueil')}
+    `)}
+    ${sectionBlock(2, "Gestion des prospects", `
+      <div class="field" id="f-isProspect"><div class="field-label">L'appel relève-t-il d'une demande de prestation (prospect) ? <span class="req">*</span></div>
+        ${choiceGroup('isProspect', [['oui','<span class="ico">✓</span>Oui','oui'],['non','<span class="ico">✕</span>Non','non']])}
+      </div>
+      <div id="prospect-block" class="${form.isProspect==='oui'?'':'hidden'}">${CRITERIA.filter(c=>c.cond==='prospect').map(critField).join('')}</div>
+    `, 'Évaluée uniquement pour les demandes de prestation')}
+    ${sectionBlock(3, "Procédure interne", crits('procedure'))}
+    ${sectionBlock(4, "Posture professionnelle", crits('posture'))}
+    ${sectionBlock(5, "Retour à l'agent", `
+      <div class="grid2">
+        <div class="field"><div class="field-label">Points forts</div><textarea data-field="strengths" placeholder="Ce qui a bien fonctionné">${esc(form.strengths)}</textarea></div>
+        <div class="field"><div class="field-label">Axes d'amélioration</div><textarea data-field="improvements" placeholder="Pistes concrètes pour progresser">${esc(form.improvements)}</textarea></div>
+      </div>`)}
+    <div class="submit-bar">
+      <div class="progress"><div class="progress-txt" id="progress-txt"></div><div class="progress-bar"><div id="progress-fill"></div></div></div>
+      <div class="actions">
+        ${editingId ? `<button class="btn btn-ghost" id="btn-cancel">Annuler</button>` : `<button class="btn btn-ghost" id="btn-reset">Vider</button>`}
+        <button class="btn btn-primary" id="btn-save">${editingId ? 'Enregistrer les modifications' : "Enregistrer l'écoute"}</button>
+      </div>
+    </div>`;
+  updateProgress();
+}
+
+function requiredKeys(){
+  const keys = ['agence','agent','callDate','pickupSec','duration','callerProfile','isProspect'];
+  CRITERIA.forEach(c=>{ if(isApplicable(form,c)) keys.push(c.key); });
+  return keys;
+}
+function isFilled(k){
+  if(k in CRIT){ const v=form.crit[k]; return v!=null && v!==''; }
+  return form[k]!=null && String(form[k]).trim()!=='';
+}
+function updateProgress(){
+  const req = requiredKeys(); const done = req.filter(isFilled).length;
+  const t=$('#progress-txt'), f=$('#progress-fill');
+  if(t) t.textContent = `${done} / ${req.length} éléments obligatoires renseignés`;
+  if(f) f.style.width = (req.length? done/req.length*100 : 0)+'%';
+}
+
+function onChoice(btn){
+  const key=btn.dataset.key; let val=btn.dataset.val;
+  if(key in CRIT){
+    const c=CRIT[key]; if(c.type==='scale' && val!=='na') val=Number(val);
+    form.crit[key]=val;
+    const show = (c.type==='yn' && val==='non') || (c.type==='scale' && val!=='na' && val<=2) || !!form.comments[key];
+    $('#c-'+key)?.classList.toggle('show', show);
+  } else {
+    form[key]=val;
+    if(key==='callerProfile'){
+      $('#other-profile').classList.toggle('show', val==='Autre');
+      if(val==='Prospect' && !form.isProspect){ form.isProspect='oui'; syncGroup('isProspect'); toggleProspect(); }
+    }
+    if(key==='isProspect') toggleProspect();
+  }
+  syncGroup(key);
+  $('#f-'+key)?.classList.remove('missing');
+  updateProgress();
+}
+function syncGroup(key){
+  const cur = key in CRIT ? form.crit[key] : form[key];
+  $$(`.choice[data-key="${key}"]`).forEach(b=>b.classList.toggle('checked', String(b.dataset.val)===String(cur)));
+}
+function toggleProspect(){ $('#prospect-block')?.classList.toggle('hidden', form.isProspect!=='oui'); }
+
+async function saveForm(){
+  // harmonise la casse en saisie libre (« marie dupont » → « Marie Dupont »)
+  if(!REF.agences.length) form.agence = normName(form.agence);
+  if(!REF.agents.length) form.agent = normName(form.agent);
+  $$('.field.missing').forEach(f=>f.classList.remove('missing'));
+  const missing = requiredKeys().filter(k=>!isFilled(k));
+  if(missing.length){
+    missing.forEach(k=>$('#f-'+k)?.classList.add('missing'));
+    $('#f-'+missing[0])?.scrollIntoView({behavior:'smooth', block:'center'});
+    toast(`Il reste ${missing.length} élément${missing.length>1?'s':''} obligatoire${missing.length>1?'s':''} à renseigner`);
+    return;
+  }
+  // on ne conserve pas les critères prospect si non applicables
+  const data = JSON.parse(JSON.stringify(form));
+  if(data.isProspect!=='oui') CRITERIA.filter(c=>c.cond==='prospect').forEach(c=>{ delete data.crit[c.key]; delete data.comments[c.key]; });
+  Object.keys(data.comments).forEach(k=>{ if(!String(data.comments[k]).trim()) delete data.comments[k]; });
+  data.pickupSec = Number(data.pickupSec); data.rings = data.rings==='' ? '' : Number(data.rings);
+  if(store.mode==='local' && data.evaluator){ LocalStore.setUser(data.evaluator); currentUser=data.evaluator; renderUser(); }
+
+  const btn=$('#btn-save'); btn.disabled=true; btn.textContent='Enregistrement…';
+  try{
+    if(editingId) await store.update(editingId, data); else await store.create(data);
+    await reload();
+    toast(editingId ? 'Modifications enregistrées' : 'Écoute enregistrée');
+    const wasEditing = !!editingId;
+    editingId=null; form=blankForm(); renderForm();
+    if(wasEditing) switchTab('hist'); else window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){
+    console.error(e); toast("Échec de l'enregistrement : "+e.message, 5000);
+    btn.disabled=false; btn.textContent = editingId ? 'Enregistrer les modifications' : "Enregistrer l'écoute";
+  }
+}
+
+function startEdit(id){
+  const e = entries.find(x=>String(x.id)===String(id)); if(!e) return;
+  editingId = e.id;
+  form = Object.assign(blankForm(), JSON.parse(JSON.stringify(e.data)));
+  form.crit = form.crit||{}; form.comments = form.comments||{};
+  if(store.mode==='sharepoint') form.evaluator = form.evaluator || currentUser;
+  switchTab('form'); renderForm(); window.scrollTo({top:0});
+}
+function cancelEdit(){ editingId=null; form=blankForm(); renderForm(); switchTab('hist'); }
+
+/* =====================================================================
+   7. FILTRES COMMUNS
+   ===================================================================== */
+const filters = { hist:{period:'all', agence:'', agent:'', q:'', showDeleted:false, from:'', to:''},
+                  synth:{period:'12m', agence:'', agent:'', from:'', to:''} };
+const PERIODS = [['all','Toutes périodes'],['month','Mois en cours'],['3m','3 derniers mois'],['6m','6 derniers mois'],['12m','12 derniers mois'],['year','Année en cours'],['custom','Période personnalisée']];
+function periodRange(f){
+  const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const back = m => { const d=new Date(today); d.setMonth(d.getMonth()-m); return d; };
+  switch(f.period){
+    case 'month': return [new Date(now.getFullYear(),now.getMonth(),1), null];
+    case '3m': return [back(3), null];
+    case '6m': return [back(6), null];
+    case '12m': return [back(12), null];
+    case 'year': return [new Date(now.getFullYear(),0,1), null];
+    case 'custom': return [parseDay(f.from), parseDay(f.to)];
+    default: return [null,null];
+  }
+}
+function periodLabel(f){
+  if(f.period==='custom') return `du ${f.from?frDate(f.from):'…'} au ${f.to?frDate(f.to):'…'}`;
+  return (PERIODS.find(p=>p[0]===f.period)||PERIODS[0])[1].toLowerCase();
+}
+function applyFilters(f, includeDeleted=false){
+  const [from,to] = periodRange(f);
+  const q = (f.q||'').trim().toLowerCase();
+  return entries.filter(e=>{
+    if(e.meta.deleted && !includeDeleted) return false;
+    const d = parseDay(e.data.callDate);
+    if(from && (!d || d<from)) return false;
+    if(to && (!d || d>to)) return false;
+    if(f.agence && e.data.agence!==f.agence) return false;
+    if(f.agent && e.data.agent!==f.agent) return false;
+    if(q){
+      const hay = [e.data.agent,e.data.agence,e.data.callerRef,e.data.motif,e.data.strengths,e.data.improvements,...Object.values(e.data.comments||{})].join(' ').toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b)=> (b.data.callDate||'').localeCompare(a.data.callDate||'') || String(b.meta.createdAt).localeCompare(String(a.meta.createdAt)));
+}
+function filterBar(scope){
+  const f = filters[scope];
+  const agences = [...new Set([...REF.agences, ...knownValues('agence')])].sort((a,b)=>a.localeCompare(b,'fr'));
+  const agents = knownValues('agent');
+  return `<div class="filters">
+    <select data-filter="${scope}.period">${PERIODS.map(([v,l])=>`<option value="${v}" ${f.period===v?'selected':''}>${l}</option>`).join('')}</select>
+    ${f.period==='custom' ? `<input type="date" data-filter="${scope}.from" value="${esc(f.from)}" title="Du"><input type="date" data-filter="${scope}.to" value="${esc(f.to)}" title="Au">` : ''}
+    <select data-filter="${scope}.agence"><option value="">Toutes les agences</option>${agences.map(a=>`<option ${f.agence===a?'selected':''}>${esc(a)}</option>`).join('')}</select>
+    <select data-filter="${scope}.agent"><option value="">Tous les agents</option>${agents.map(a=>`<option ${f.agent===a?'selected':''}>${esc(a)}</option>`).join('')}</select>
+    ${scope==='hist' ? `<input type="search" data-filter="hist.q" placeholder="Rechercher…" value="${esc(f.q)}">
+      <label class="chk"><input type="checkbox" data-filter="hist.showDeleted" ${f.showDeleted?'checked':''}> Écoutes supprimées</label>` : ''}
+  </div>`;
+}
+
+/* =====================================================================
+   8. HISTORIQUE
+   ===================================================================== */
+function valueLabel(c, v){
+  if(v==null || v==='') return ['—',''];
+  if(v==='na') return ['Non concerné','na'];
+  if(c.type==='yn') return v==='oui' ? ['✓ Oui','oui'] : ['✕ Non','non'];
+  return [v+' / 5', Number(v)<=2 ? 'non' : (Number(v)>=4 ? 'oui' : '')];
+}
+function entryCard(e){
+  const d=e.data; const sc=scores(d);
+  const durL = (DURATIONS.find(x=>x[0]===d.duration)||[,'—'])[1];
+  const rows = SECTIONS.map(s=>{
+    const cs = CRITERIA.filter(c=>c.section===s.id && isApplicable(d,c));
+    if(!cs.length) return '';
+    return cs.map(c=>{ const [l,cls]=valueLabel(c,d.crit?.[c.key]); const com=d.comments?.[c.key];
+      return `<div class="k">${esc(c.short)}</div><div class="v ${cls}">${l}</div>${com?`<div class="c">${esc(com)}</div>`:''}`; }).join('');
+  }).join('');
+  const m=e.meta;
+  return `<div class="entry ${m.deleted?'deleted':''}" data-entry="${esc(e.id)}">
+    <div class="entry-head">
+      <div class="entry-left">
+        <div class="score-badge" style="background:${colorFor(sc.global)}">${sc.global==null?'—':Math.round(sc.global)+'%'}</div>
+        <div style="min-width:0">
+          <div class="entry-title">${esc(d.agent||'Agent non renseigné')} · ${esc(d.agence||'Agence non renseignée')} ${m.deleted?'<span class="tag" style="background:var(--alert-soft);color:var(--alert)">Supprimée</span>':''}</div>
+          <div class="entry-sub">${frDate(d.callDate)}${d.callTime?' à '+esc(d.callTime):''} · ${esc(d.callerProfile==='Autre' && d.callerProfileOther ? d.callerProfileOther : (d.callerProfile||'—'))}${d.motif?' · '+esc(d.motif):''} · ${durL} · décroché en ${d.pickupSec===''||d.pickupSec==null?'—':esc(d.pickupSec)+' s'}</div>
+        </div>
+      </div>
+      <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#5E6B78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="entry-detail">
+      <div class="sec-mini">${SECTIONS.map(s=>`<div>${s.label}<b style="color:${colorFor(sc.sections[s.id])}">${sc.sections[s.id]==null?'N/A':Math.round(sc.sections[s.id])+' %'}</b></div>`).join('')}</div>
+      <div class="detail-grid">
+        ${d.callerRef?`<div class="k">Référence appelant</div><div class="v">${esc(d.callerRef)}</div>`:''}
+        <div class="k">Demande de prestation</div><div class="v">${d.isProspect==='oui'?'Oui':'Non'}</div>
+        ${rows}
+        ${d.strengths?`<div class="k" style="grid-column:1/-1;margin-top:6px;font-weight:700;color:var(--fern)">Points forts</div><div class="c">${esc(d.strengths)}</div>`:''}
+        ${d.improvements?`<div class="k" style="grid-column:1/-1;margin-top:6px;font-weight:700;color:var(--alert)">Axes d'amélioration</div><div class="c">${esc(d.improvements)}</div>`:''}
+      </div>
+      <div class="meta">Évaluée par ${esc(d.evaluator||m.createdBy||'—')} · saisie le ${frDateTime(m.createdAt)}${m.modifiedAt && m.modifiedAt!==m.createdAt ? ` · dernière modification le ${frDateTime(m.modifiedAt)} par ${esc(m.modifiedBy||'—')}`:''}</div>
+      <div class="entry-actions">
+        ${m.deleted ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${esc(e.id)}">Restaurer</button>`
+                    : `<button class="btn btn-ghost btn-sm" data-act="edit" data-id="${esc(e.id)}">✎ Modifier</button>
+                       <button class="btn btn-danger btn-sm" data-act="delete" data-id="${esc(e.id)}">Supprimer</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+function renderHistory(){
+  const f=filters.hist; const list=applyFilters(f, f.showDeleted).filter(e=>f.showDeleted || !e.meta.deleted);
+  const active=list.filter(e=>!e.meta.deleted);
+  const s = active.map(e=>scores(e.data).global).filter(v=>v!=null);
+  const avg = s.length ? s.reduce((a,b)=>a+b,0)/s.length : null;
+  $('#view-hist').innerHTML = `
+    <div class="toolbar">${filterBar('hist')}
+      <div class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="csv-hist" ${active.length?'':'disabled'}>⬇ Export Excel (CSV)</button>
+        <button class="btn btn-ghost btn-sm" data-act="backup">Sauvegarde JSON</button>
+        <button class="btn btn-ghost btn-sm" data-act="import">Importer…</button>
+      </div>
+    </div>
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="num">${active.length}</div><div class="lbl">Écoutes affichées</div></div>
+      <div class="kpi"><div class="num" style="color:${colorFor(avg)}">${pct(avg)}</div><div class="lbl">Score qualité moyen</div></div>
+      <div class="kpi"><div class="num">${new Set(active.map(e=>e.data.agent).filter(Boolean)).size}</div><div class="lbl">Agents évalués</div></div>
+    </div>
+    ${list.length ? list.map(entryCard).join('') : `<div class="empty"><div class="big">Aucune écoute sur cette sélection</div><div>Modifiez les filtres ou saisissez une nouvelle écoute.</div></div>`}`;
+}
+
+async function softDelete(id, deleted){
+  if(deleted && !confirm("Supprimer cette écoute ?\nElle sera masquée des statistiques mais restera restaurable depuis l'historique.")) return;
+  try{ await store.setDeleted(id, deleted); await reload(); toast(deleted?'Écoute supprimée (restaurable)':'Écoute restaurée'); renderHistory(); }
+  catch(e){ toast('Erreur : '+e.message, 5000); }
+}
+
+/* =====================================================================
+   9. SYNTHÈSE
+   ===================================================================== */
+let charts = {};
+function destroyCharts(){ Object.values(charts).forEach(c=>c?.destroy()); charts={}; }
+function avg(a){ return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; }
+function barRows(items){
+  if(!items.length) return `<div class="hint">Pas de données.</div>`;
+  return items.map(it=>`<div class="bar-row"><div class="bar-label" title="${esc(it.label)}">${esc(it.label)}</div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${it.value==null?0:Math.max(2,it.value)}%;background:${colorFor(it.value)}"></div></div>
+    <div class="bar-val" style="color:${colorFor(it.value)}">${pct(it.value)}</div><div class="bar-n">n=${it.n}</div></div>`).join('');
+}
+function groupScores(list, field){
+  const g={}; list.forEach(e=>{ const k=e.data[field]||'Non renseigné'; const s=scores(e.data).global; (g[k]=g[k]||{all:[],n:0}).n++; if(s!=null) g[k].all.push(s); });
+  return Object.entries(g).map(([label,o])=>({label, value:avg(o.all), n:o.n})).sort((a,b)=>(b.value??-1)-(a.value??-1));
+}
+function renderSynth(){
+  destroyCharts();
+  const f=filters.synth; const list=applyFilters(f);
+  const el=$('#view-synth');
+  const logo = CONFIG.logoUrl ? `<img src="${esc(CONFIG.logoUrl)}" alt="Amicial">` : `<span class="brand-text">Amicial</span>`;
+  const head = `<div class="print-head"><div><h1>Synthèse des écoutes téléphoniques</h1>
+      <div class="ph-sub">Période : ${esc(periodLabel(f))} · ${esc(f.agence||'toutes agences')} · ${esc(f.agent||'tous agents')} · édité le ${new Date().toLocaleDateString('fr-FR')}</div></div>${logo}</div>`;
+  const toolbar = `<div class="toolbar">${filterBar('synth')}<div class="actions">
+      <button class="btn btn-ghost btn-sm" data-act="csv-synth" ${list.length?'':'disabled'}>⬇ Export Excel (CSV)</button>
+      <button class="btn btn-primary btn-sm" data-act="print" ${list.length?'':'disabled'}>Rapport PDF</button></div></div>`;
+  if(!list.length){ el.innerHTML = toolbar+`<div class="empty"><div class="big">Aucune écoute sur cette sélection</div><div>Élargissez la période ou changez d'agence / d'agent.</div></div>`; return; }
+
+  const sc = list.map(e=>scores(e.data));
+  const gAvg = avg(sc.map(s=>s.global).filter(v=>v!=null));
+  const pick = list.map(e=>e.data.pickupSec).filter(v=>v!=='' && v!=null).map(Number).filter(Number.isFinite);
+  const pickAvg = avg(pick); const pickOk = pick.length ? pick.filter(v=>v<=CONFIG.seuilDecrochageSec).length/pick.length*100 : null;
+  let ynO=0, ynT=0, vig=0;
+  list.forEach(e=>CRITERIA.forEach(c=>{
+    if(!isApplicable(e.data,c)) return; const v=e.data.crit?.[c.key];
+    if(c.type==='yn' && (v==='oui'||v==='non')){ ynT++; if(v==='oui') ynO++; }
+    if(isVigilance(e.data,c)) vig++;
+  }));
+  const conf = ynT ? ynO/ynT*100 : null;
+
+  // par section
+  const secItems = SECTIONS.map(s=>{ const vals=sc.map(x=>x.sections[s.id]).filter(v=>v!=null); return {label:s.label, value:avg(vals), n:vals.length}; });
+  // par critère
+  const critRows = CRITERIA.map(c=>{
+    const vals=[]; let na=0;
+    list.forEach(e=>{ if(!isApplicable(e.data,c)){ return; } const p=critPoints(e.data,c); if(p==null) na++; else vals.push(p); });
+    let display='—';
+    if(vals.length){
+      if(c.type==='yn') display = fmt(avg(vals))+' % oui';
+      else display = fmt(avg(vals)/100*4+1,1)+' / 5';
+    }
+    return {c, value:avg(vals), n:vals.length, na, display};
+  }).sort((a,b)=>(a.value??101)-(b.value??101));
+
+  // verbatims
+  const verb=[];
+  list.forEach(e=>{
+    Object.entries(e.data.comments||{}).forEach(([k,t])=>{ if(t && CRIT[k] && isApplicable(e.data,CRIT[k])) verb.push({pos:false,label:CRIT[k].short,t,e}); });
+    if(e.data.improvements) verb.push({pos:false,label:"Axe d'amélioration",t:e.data.improvements,e});
+    if(e.data.strengths) verb.push({pos:true,label:'Point fort',t:e.data.strengths,e});
+  });
+
+  el.innerHTML = head + toolbar + `
+    <div class="kpis">
+      <div class="kpi"><div class="num">${list.length}</div><div class="lbl">Écoutes analysées</div><div class="sub">${new Set(list.map(e=>e.data.agent)).size} agents · ${new Set(list.map(e=>e.data.agence)).size} agences</div></div>
+      <div class="kpi" style="border-top-color:${hexFor(gAvg)}"><div class="num" style="color:${colorFor(gAvg)}">${pct(gAvg)}</div><div class="lbl">Score qualité moyen</div><div class="sub">tous critères applicables</div></div>
+      <div class="kpi" style="border-top-color:${hexFor(conf)}"><div class="num" style="color:${colorFor(conf)}">${pct(conf)}</div><div class="lbl">Conformité Oui / Non</div><div class="sub">${ynO} oui sur ${ynT} réponses</div></div>
+      <div class="kpi" style="border-top-color:${hexFor(pickOk)}"><div class="num">${pickAvg==null?'—':fmt(pickAvg)+' s'}</div><div class="lbl">Délai moyen de décrochage</div><div class="sub">${pct(pickOk)} sous ${CONFIG.seuilDecrochageSec} s</div></div>
+      <div class="kpi" style="border-top-color:var(--alert)"><div class="num" style="color:var(--alert)">${vig}</div><div class="lbl">Points de vigilance</div><div class="sub">« Non » ou note ≤ 2</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card"><h3>Score par volet de la grille</h3><div class="card-sub">Moyenne des critères applicables, en %</div>${barRows(secItems)}</div>
+      <div class="card"><h3 id="trend-title">Évolution mensuelle</h3><div class="card-sub">Score moyen (ligne) et nombre d'écoutes (barres)</div><div class="chart-wrap"><canvas id="ch-trend"></canvas></div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card"><h3>Score par agence</h3><div class="card-sub">n = nombre d'écoutes : prudence sous 3 écoutes</div>${barRows(groupScores(list,'agence'))}</div>
+      <div class="card"><h3>Score par agent</h3><div class="card-sub">n = nombre d'écoutes : prudence sous 3 écoutes</div>${barRows(groupScores(list,'agent'))}</div>
+    </div>
+
+    <div class="card"><h3>Résultats par critère</h3><div class="card-sub">Classés du plus fragile au plus solide · les critères non applicables ne sont pas comptés</div>
+      <table class="crit"><thead><tr><th>Critère</th><th>Volet</th><th style="width:30%"></th><th style="text-align:right">Résultat</th><th style="text-align:right">Évalués</th><th style="text-align:right">N/A</th></tr></thead><tbody>
+      ${critRows.map(r=>`<tr><td><b>${esc(r.c.short)}</b></td><td><span class="tag">${esc(SECTIONS.find(s=>s.id===r.c.section).label)}</span></td>
+        <td><div class="mini"><div style="width:${r.value==null?0:Math.max(2,r.value)}%;background:${colorFor(r.value)}"></div></div></td>
+        <td class="num" style="color:${colorFor(r.value)}">${r.display}</td><td class="num">${r.n}</td><td class="num" style="color:var(--ink-soft)">${r.na||''}</td></tr>`).join('')}
+      </tbody></table></div>
+
+    <div class="two-col">
+      <div class="card"><h3>Profil des appelants</h3><div class="card-sub">Répartition des appels écoutés</div><div class="chart-wrap"><canvas id="ch-profile"></canvas></div></div>
+      <div class="card"><h3>Durée des appels et motifs</h3><div class="card-sub">Nombre d'appels</div><div class="chart-wrap"><canvas id="ch-duration"></canvas></div></div>
+    </div>
+
+    <div class="card"><h3>Verbatims</h3><div class="card-sub">Commentaires des évaluateurs, les plus récents d'abord (${verb.length})</div>
+      ${verb.length ? verb.slice(0,20).map(v=>`<div class="verbatim ${v.pos?'pos':''}"><div class="vb-meta">${esc(v.label)} · ${esc(v.e.data.agent||'')} · ${esc(v.e.data.agence||'')} · ${frDate(v.e.data.callDate)}</div><div class="vb-text">${esc(v.t)}</div></div>`).join('') : '<div class="hint">Aucun commentaire sur la sélection.</div>'}
+      ${verb.length>20?`<div class="hint">… ${verb.length-20} autres commentaires dans l'export Excel.</div>`:''}
+    </div>`;
+
+  drawCharts(list);
+}
+function drawCharts(list){
+  if(typeof Chart==='undefined'){
+    $$('#view-synth canvas').forEach(c=>c.parentElement.innerHTML='<div class="hint" style="padding:40px 0;text-align:center">Graphique indisponible (bibliothèque non chargée).</div>');
+    return;
+  }
+  Chart.defaults.font.family = "'Open Sans', sans-serif"; Chart.defaults.color = '#5E6B78'; Chart.defaults.animation = false;
+  // tendance
+  // regroupement par semaine si la sélection couvre 2 mois ou moins, sinon par mois
+  const months = new Set(list.map(e=>(e.data.callDate||'').slice(0,7)).filter(Boolean));
+  const weekly = months.size<=2;
+  const weekKey = s=>{ const d=parseDay(s); const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const byM={}; list.forEach(e=>{ if(!e.data.callDate) return; const k= weekly ? weekKey(e.data.callDate) : e.data.callDate.slice(0,7); (byM[k]=byM[k]||[]).push(scores(e.data).global); });
+  const keys=Object.keys(byM).sort();
+  const labels=keys.map(k=>{ if(weekly) return 'sem. du '+parseDay(k).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); const [y,m]=k.split('-'); return new Date(y,m-1,1).toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}); });
+  const tt=document.getElementById('trend-title'); if(tt) tt.textContent = weekly ? 'Évolution hebdomadaire' : 'Évolution mensuelle';
+  charts.trend = new Chart($('#ch-trend'), {
+    data:{ labels, datasets:[
+      {type:'line', label:'Score moyen (%)', data:keys.map(k=>{ const v=avg(byM[k].filter(x=>x!=null)); return v==null?null:Math.round(v); }), borderColor:'#3E5A7F', backgroundColor:'#3E5A7F', tension:.3, yAxisID:'y', pointRadius:4},
+      {type:'bar', label:"Nombre d'écoutes", data:keys.map(k=>byM[k].length), backgroundColor:'#C7E0E4', borderRadius:4, yAxisID:'y1', maxBarThickness:30}
+    ]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:11}}},
+      scales:{ y:{min:0,max:100,ticks:{callback:v=>v+' %'},grid:{color:'#EEF1F3'}}, y1:{position:'right',beginAtZero:true,ticks:{precision:0},grid:{display:false}}, x:{grid:{display:false}} } }
+  });
+  // profils
+  const prof={}; list.forEach(e=>{ const p=e.data.callerProfile||'Non renseigné'; prof[p]=(prof[p]||0)+1; });
+  charts.profile = new Chart($('#ch-profile'), { type:'doughnut',
+    data:{ labels:Object.keys(prof), datasets:[{ data:Object.values(prof), backgroundColor:['#3E5A7F','#F29559','#C7E0E4','#568259','#E3DBC8','#8A9BB0','#5E6B78'], borderColor:'#fff' }] },
+    options:{ maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'right',labels:{boxWidth:11,font:{size:11}}}} } });
+  // durée + motifs
+  const dur = DURATIONS.map(([v])=>list.filter(e=>e.data.duration===v).length);
+  const mot={}; list.forEach(e=>{ if(e.data.motif) mot[e.data.motif]=(mot[e.data.motif]||0)+1; });
+  const mLabels = Object.keys(mot);
+  charts.duration = new Chart($('#ch-duration'), { type:'bar',
+    data:{ labels:[...DURATIONS.map(d=>d[1]), ...mLabels], datasets:[{ data:[...dur, ...mLabels.map(k=>mot[k])],
+      backgroundColor:[...DURATIONS.map(()=>'#3E5A7F'), ...mLabels.map(()=>'#F29559')], borderRadius:5, maxBarThickness:26 }] },
+    options:{ indexAxis:'y', maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{beginAtZero:true,ticks:{precision:0},grid:{color:'#EEF1F3'}}, y:{grid:{display:false}} } } });
+}
+
+/* =====================================================================
+   10. EXPORTS / IMPORT
+   ===================================================================== */
+function csvCell(v){ const s=String(v ?? ''); return /[";\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function csvNum(v, dec=1){ return v==null || v==='' || isNaN(v) ? '' : Number(v).toFixed(dec).replace('.',','); }
+function download(name, content, type){
+  const blob = new Blob([content], {type}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function exportCSV(list){
+  if(!list.length){ toast('Aucune écoute à exporter'); return; }
+  const H = ["Date","Heure","Agence","Agent évalué","Évaluateur","Délai de décrochage (s)","Sonneries","Durée","Profil appelant","Précision profil","Réf. appelant","Motif","Demande de prestation"];
+  CRITERIA.forEach(c=>H.push(c.short)); CRITERIA.forEach(c=>H.push(c.short+' · commentaire'));
+  SECTIONS.forEach(s=>H.push('Score '+s.label+' (%)')); H.push('Score global (%)','Points de vigilance','Points forts',"Axes d'amélioration",'Saisie par','Saisie le','Modifiée par','Modifiée le');
+  const rows = list.map(e=>{
+    const d=e.data, sc=scores(d), m=e.meta;
+    const r=[d.callDate?frDate(d.callDate):'', d.callTime||'', d.agence, d.agent, d.evaluator, d.pickupSec, d.rings, (DURATIONS.find(x=>x[0]===d.duration)||[,''])[1],
+      d.callerProfile, d.callerProfileOther, d.callerRef, d.motif, d.isProspect==='oui'?'Oui':'Non'];
+    CRITERIA.forEach(c=>{ if(!isApplicable(d,c)){ r.push('N/A'); return; } const v=d.crit?.[c.key];
+      r.push(v==null||v===''?'':(v==='na'?'N/A':(c.type==='yn'?(v==='oui'?'Oui':'Non'):v))); });
+    CRITERIA.forEach(c=>r.push(d.comments?.[c.key]||''));
+    SECTIONS.forEach(s=>r.push(csvNum(sc.sections[s.id])));
+    r.push(csvNum(sc.global), CRITERIA.filter(c=>isVigilance(d,c)).length, d.strengths, d.improvements, m.createdBy, frDateTime(m.createdAt), m.modifiedBy, frDateTime(m.modifiedAt));
+    return r;
+  });
+  const csv = [H,...rows].map(r=>r.map(csvCell).join(';')).join('\r\n');
+  download(`ecoutes_telephoniques_${todayISO()}.csv`, '\uFEFF'+csv, 'text/csv;charset=utf-8');
+  toast(`Export de ${list.length} écoute${list.length>1?'s':''} téléchargé`);
+}
+function exportBackup(){
+  const payload = { app:'amicial-ecoutes', version:2, exportedAt:new Date().toISOString(), entries };
+  download(`ecoutes_sauvegarde_${todayISO()}.json`, JSON.stringify(payload,null,1), 'application/json');
+  toast('Sauvegarde complète téléchargée');
+}
+function parseCSV(text){
+  text = text.replace(/^\uFEFF/,'');
+  const rows=[]; let row=[], cell='', q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q=false; } else cell+=ch; }
+    else if(ch==='"') q=true;
+    else if(ch===';'){ row.push(cell); cell=''; }
+    else if(ch==='\n'){ row.push(cell.replace(/\r$/,'')); rows.push(row); row=[]; cell=''; }
+    else cell+=ch;
+  }
+  if(cell!=='' || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(c=>c.trim()!==''));
+}
+// Conversion de l'export CSV de l'ancien formulaire
+function fromLegacyCSV(rows){
+  const H=rows[0]; const idx=n=>H.indexOf(n);
+  const YN={"Formule d'accueil":'greeting',"Qualification prospect":'prospectQualif',"Recueil infos contact":'prospectContact',"Analyse du besoin":'prospectNeeds',"Prestations adaptées présentées":'prospectOffer',"Orientation bon interlocuteur":'orientation',"Posture aidante":'helpfulPosture',"Infos complètes et exactes":'infoAccuracy'};
+  const SC={"Respect circuit traitement":'circuitRespect',"Procédure EI / Réclamations / Urgences":'eiProcedure',"Traçabilité":'traceability',"Attitude courtoise":'courtesy',"Écoute active":'activeListening',"Résumé des actions":'summarizeActions',"Prise de congé":'politeClosing'};
+  return rows.slice(1).map(r=>{
+    const g=n=>{ const i=idx(n); return i<0?'':(r[i]||'').trim(); };
+    const d=blankForm(); d.evaluator=''; d.callDate=g("Date de l'appel"); d.agent=normName(g('Agent évalué')); d.agence='Non renseignée';
+    d.callerRef=initials(g("Nom de l'appelant")); d.callerProfile=g("Profil de l'appelant")==='Famille/Entourage/ Aidant'?'Famille / entourage / aidant':g("Profil de l'appelant");
+    d.callerProfileOther=g('Profil (autre)');
+    const pt=g('Temps de décrochage'); const sec=pt.match(/(\d+)\s*(?:secondes?|sec|s)\b/i); const ring=pt.match(/(\d+)\s*sonn/i);
+    d.pickupSec= sec?Number(sec[1]):''; d.rings= ring?Number(ring[1]):'';
+    const du=g("Durée de l'appel"); d.duration = du.startsWith('2')?'2-5':(du.startsWith('>')?'>5':'');
+    Object.entries(YN).forEach(([l,k])=>{ const v=g(l).toLowerCase(); if(v==='oui'||v==='non') d.crit[k]=v; const c=g(l+' - commentaire'); if(c) d.comments[k]=c; });
+    d.isProspect = ['prospectQualif','prospectContact','prospectNeeds','prospectOffer'].some(k=>d.crit[k]) || d.callerProfile==='Prospect' ? 'oui':'non';
+    Object.entries(SC).forEach(([l,k])=>{ const v=Number(g(l+' (/5)')); if(v>=1&&v<=5) d.crit[k]=v; });
+    d.importedFrom='ancien formulaire';
+    return d;
+  });
+}
+async function importFile(file){
+  const text = await file.text(); let items=[];
+  try{
+    if(file.name.toLowerCase().endsWith('.json')){
+      const j=JSON.parse(text); const arr = Array.isArray(j) ? j : (j.entries||[]);
+      items = arr.map(x=>x.data ? x : {data:x, meta:{deleted:false}}).filter(x=>!x.meta?.deleted).map(x=>x.data);
+    } else {
+      const rows=parseCSV(text);
+      if(!rows.length || !rows[0].includes('Temps de décrochage')) throw new Error("Ce CSV ne correspond pas à l'export de l'ancien formulaire. Pour une restauration, utilisez la sauvegarde JSON.");
+      items = fromLegacyCSV(rows);
+    }
+  }catch(e){ toast('Import impossible : '+e.message, 5000); return; }
+  // évite les doublons exacts
+  const sig = d=>[d.callDate,d.agent,d.callerRef,JSON.stringify(d.crit)].join('|');
+  const existing = new Set(entries.map(e=>sig(e.data)));
+  const fresh = items.filter(d=>!existing.has(sig(d)));
+  if(!fresh.length){ toast('Aucune nouvelle écoute à importer (doublons ignorés)'); return; }
+  if(!confirm(`Importer ${fresh.length} écoute${fresh.length>1?'s':''} ?${items.length-fresh.length?`\n(${items.length-fresh.length} doublon(s) ignoré(s))`:''}\n\nLes écoutes de l'ancien formulaire sont rattachées à l'agence « Non renseignée » : pensez à les corriger via « Modifier ».`)) return;
+  let ok=0;
+  for(const d of fresh){ try{ await store.create(d); ok++; if(ok%5===0) toast(`Import… ${ok}/${fresh.length}`); }catch(e){ console.error(e); } }
+  await reload(); toast(`${ok} écoute${ok>1?'s':''} importée${ok>1?'s':''}`); renderHistory();
+}
+
+/* =====================================================================
+   11. NAVIGATION, ÉVÉNEMENTS, DÉMARRAGE
+   ===================================================================== */
+let currentTab='form';
+function switchTab(tab){
+  currentTab=tab;
+  $$('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  ['form','hist','synth'].forEach(t=>$('#view-'+t).classList.toggle('hidden', t!==tab));
+  if(tab==='hist') renderHistory();
+  if(tab==='synth') renderSynth();
+}
+function renderUser(){
+  const badge = store.mode==='sharepoint' ? '<span class="mode-badge sp">SharePoint</span>' : '<span class="mode-badge local">Mode local</span>';
+  const ini = currentUser ? initials(currentUser).replace(/[.\s]/g,'').slice(0,2) : '?';
+  $('#user-chip').innerHTML = `${badge}${currentUser?`<span>${esc(currentUser)}</span><span class="avatar">${esc(ini)}</span>`:''}`;
+}
+function renderBrand(){
+  $('#brand-logo').innerHTML = CONFIG.logoUrl ? `<img src="${esc(CONFIG.logoUrl)}" alt="Amicial">` : `<span class="brand-text">Amicial</span>`;
+}
+
+document.addEventListener('click', ev=>{
+  const tab = ev.target.closest('.tab-btn'); if(tab){ switchTab(tab.dataset.tab); return; }
+  const ch = ev.target.closest('.choice'); if(ch){ onChoice(ch); return; }
+  if(ev.target.id==='btn-save'){ saveForm(); return; }
+  if(ev.target.id==='btn-reset'){ if(confirm('Vider le formulaire ?')){ form=blankForm(); renderForm(); } return; }
+  if(ev.target.id==='btn-cancel' || ev.target.id==='cancel-edit'){ ev.preventDefault(); cancelEdit(); return; }
+  const act = ev.target.closest('[data-act]');
+  if(act){
+    const a=act.dataset.act, id=act.dataset.id;
+    if(a==='edit') startEdit(id);
+    if(a==='delete') softDelete(id, true);
+    if(a==='restore') softDelete(id, false);
+    if(a==='csv-hist') exportCSV(applyFilters(filters.hist));
+    if(a==='csv-synth') exportCSV(applyFilters(filters.synth));
+    if(a==='backup') exportBackup();
+    if(a==='import') $('#import-file').click();
+    if(a==='print'){ Object.values(charts).forEach(c=>c.resize()); setTimeout(()=>window.print(), 150); }
+    return;
+  }
+  const head = ev.target.closest('.entry-head'); if(head){ head.parentElement.classList.toggle('open'); }
+});
+document.addEventListener('input', ev=>{
+  const t=ev.target;
+  if(t.dataset.field){ form[t.dataset.field]=t.value; t.closest('.field')?.classList.remove('missing'); updateProgress(); }
+  if(t.dataset.comment){ form.comments[t.dataset.comment]=t.value; }
+  if(t.dataset.filter==='hist.q'){ filters.hist.q=t.value; clearTimeout(t._t); t._t=setTimeout(()=>{ renderHistory(); const s=$('[data-filter="hist.q"]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); },250); }
+});
+document.addEventListener('change', ev=>{
+  const t=ev.target;
+  if(t.dataset.field && t.tagName==='SELECT'){
+    form[t.dataset.field]=t.value; t.closest('.field')?.classList.remove('missing');
+    if(t.dataset.field==='agence' && REF.agents.length){
+      if(form.agent && !agentsFor(form.agence).list.includes(form.agent)) form.agent='';
+      $('#ctl-agent').innerHTML = agentControl();
+    }
+    updateProgress();
+  }
+  if(t.dataset.filter && t.dataset.filter!=='hist.q'){
+    const [scope,key]=t.dataset.filter.split('.');
+    filters[scope][key] = t.type==='checkbox' ? t.checked : t.value;
+    scope==='hist' ? renderHistory() : renderSynth();
+  }
+  if(t.id==='import-file' && t.files[0]){ importFile(t.files[0]); t.value=''; }
+});
+window.addEventListener('beforeprint', ()=>Object.values(charts).forEach(c=>c.resize()));
+
+async function boot(){
+  renderBrand();
+  const banners=$('#banners');
+  if(store.mode==='sharepoint'){
+    // En production : pas de repli silencieux en local (les données seraient éparpillées)
+    try{
+      const r = await store.init(); currentUser = r.user || ''; renderUser();
+      const diag = await store.diagnose();
+      if(!diag.ok || location.hash==='#installation'){ showInstaller(diag); return; }
+    }catch(e){ console.error(e); showFatal(e); return; }
+  }
+  try{
+    const r = await store.init(); currentUser = r.user || '';
+    await reload();
+    loadLocalRefs();
+    const missingRefs = store.mode==='sharepoint' ? await store.loadRefs() : [];
+    if(missingRefs.length){
+      loadLocalRefs(missingRefs);
+      banners.innerHTML = `<div class="banner warn"><div><b>Liste(s) de référence introuvable(s) dans SharePoint :</b> ${missingRefs.join(', ')}. Les valeurs de secours de la configuration sont utilisées.</div></div>`;
+    }
+  }catch(e){
+    console.error(e);
+    if(store.mode==='sharepoint'){ showFatal(e); return; }
+    banners.innerHTML = `<div class="banner err"><div><b>Connexion à SharePoint impossible.</b> ${esc(e.message)}<br>L'outil bascule en mode local : les saisies restent sur ce poste.</div></div>`;
+    store = LocalStore; currentUser = LocalStore.user(); await reload(); loadLocalRefs();
+  }
+  if(store.mode==='local') loadLocalRefs();
+  if(store.mode==='local' && !banners.innerHTML){
+    banners.innerHTML = `<div class="banner warn"><div><b>Mode local :</b> les écoutes sont enregistrées dans ce navigateur uniquement. Utilisez « Sauvegarde JSON » régulièrement. Le partage entre évaluateurs nécessite la connexion SharePoint (voir la notice de mise en service).</div></div>`;
+  }
+  renderUser(); form=blankForm(); renderForm();
+  renderRefLinks();
+}
+function hideMain(){ $('.tabs').classList.add('hidden'); ['form','hist','synth'].forEach(t=>$('#view-'+t).classList.add('hidden')); }
+function showFatal(e){
+  hideMain();
+  const hint = e.status===404 ? "Le site SharePoint indiqué dans config.js (siteHostname / sitePath) est introuvable."
+    : e.status===403 ? "Votre compte n'a pas accès à ce site SharePoint ou l'autorisation de l'application n'a pas été accordée par l'administrateur."
+    : "Vérifiez votre connexion et les paramètres de config.js.";
+  $('#banners').innerHTML = `<div class="banner err"><div><b>Connexion à SharePoint impossible.</b> ${esc(hint)}<br><span class="hint">Détail technique : ${esc(e.message)}</span><br><br><button class="btn btn-ghost btn-sm" onclick="location.reload()">Réessayer</button></div></div>`;
+}
+
+/* ----- Assistant d'installation (mode SharePoint) ----- */
+function showInstaller(diag){
+  hideMain(); const v=$('#view-install'); v.classList.remove('hidden');
+  const row = l => `<tr><td><b>${esc(l.label)}</b><br><span class="hint">${esc(l.name)}</span></td>
+    <td>${l.exists ? '<span class="st-ok">✓ Présente</span>' : '<span class="st-ko">✕ À créer</span>'}</td>
+    <td>${l.exists && !l.missing.length ? '<span class="st-ok">✓ Complète</span>' : `<span class="st-ko">Colonnes à créer : ${esc(l.missing.join(', '))}</span>`}</td>
+    <td>${l.webUrl ? `<a href="${esc(l.webUrl)}" target="_blank" rel="noopener">Ouvrir</a>` : ''}</td></tr>`;
+  v.innerHTML = `
+    <div class="card"><h3><span class="steps-num">1</span>Listes SharePoint</h3>
+      <div class="card-sub">Site : ${esc(CONFIG.siteHostname+CONFIG.sitePath)} · connecté en tant que ${esc(currentUser)}</div>
+      <table class="crit"><thead><tr><th>Liste</th><th>État</th><th>Colonnes</th><th></th></tr></thead><tbody>${diag.lists.map(row).join('')}</tbody></table>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        ${diag.ok ? '<span class="st-ok">Toutes les listes sont en place.</span>' : '<button class="btn btn-primary" id="btn-install">Créer automatiquement les éléments manquants</button>'}
+        <span class="hint">Nécessite d'être propriétaire du site (droit « Gérer les listes »).</span>
+      </div>
+      <div class="install-log" id="install-log"></div>
+    </div>
+    <div class="card ${diag.ok?'':'hidden'}" id="card-ref"><h3><span class="steps-num">2</span>Remplir les listes de référence <span class="hint">(facultatif : vous pouvez aussi le faire dans SharePoint)</span></h3>
+      <div class="card-sub">Les doublons sont ignorés. Vous pourrez corriger ensuite directement dans les listes SharePoint.</div>
+      <div class="two-col">
+        <div><div class="field-label">Agences <span class="hint">une par ligne</span></div>
+          <textarea id="ref-agences" rows="8" placeholder="Avignon&#10;Carpentras&#10;Orange"></textarea>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ref="agences">Ajouter les agences</button></div>
+        <div><div class="field-label">Agents d'accueil <span class="hint">« Prénom Nom ; Agence 1, Agence 2 »</span></div>
+          <textarea id="ref-agents" rows="8" placeholder="Marie Dupont ; Avignon, Orange&#10;Paul Martin ; Carpentras"></textarea>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ref="agents">Ajouter les agents</button>
+          <div class="hint" style="margin-top:4px">Ajoutez d'abord les agences : les agents y sont rattachés par leur nom exact.</div></div>
+      </div>
+      <div class="install-log" id="ref-log"></div>
+    </div>
+    <div class="card ${diag.ok?'':'hidden'}" id="card-done"><h3><span class="steps-num">3</span>C'est prêt</h3>
+      <div class="card-sub">Pensez à restreindre les autorisations des listes (voir le guide d'installation). Cet écran reste accessible via le lien « Vérifier l'installation ».</div>
+      <button class="btn btn-primary" onclick="location.hash='';location.reload()">Ouvrir l'outil</button>
+    </div>`;
+  const log = (id,msg)=>{ const el=$('#'+id); el.textContent += msg+'\n'; el.scrollTop=el.scrollHeight; };
+  $('#btn-install')?.addEventListener('click', async ev=>{
+    ev.target.disabled=true; ev.target.textContent='Création en cours…';
+    try{ const d = await store.install(m=>log('install-log',m)); log('install-log', d.ok ? '✓ Installation terminée.' : '⚠ Des éléments manquent encore : relancez ou vérifiez vos droits.'); setTimeout(()=>showInstaller(d), d.ok?900:0); }
+    catch(e){ log('install-log','✕ '+e.message+(e.status===403?"\n→ Vos droits sur le site sont insuffisants, ou l'autorisation « Sites.Manage.All » n'a pas été accordée à l'application.":'')); ev.target.disabled=false; ev.target.textContent='Réessayer'; }
+  });
+  v.querySelectorAll('[data-ref]').forEach(b=>b.addEventListener('click', async ()=>{
+    const key=b.dataset.ref; const raw=$('#ref-'+key).value.split('\n').map(x=>x.trim()).filter(Boolean);
+    const rows = raw.map(line=>{ if(key==='agences') return {title:line};
+      const [nom, ag=''] = line.split(';'); return {title:nom.trim(), agences: ag.split(',').map(x=>x.trim()).filter(Boolean)}; }).filter(r=>r.title);
+    if(!rows.length){ toast('Rien à ajouter'); return; }
+    b.disabled=true;
+    try{ const r = await store.addRefItems(key, rows);
+      log('ref-log', `${key==='agences'?'Agences':'Agents'} : ${r.added} ajouté(s)` + (r.skipped.length?`, ${r.skipped.length} déjà présent(s)`:'') + (r.unknown.length?`\n⚠ Agences inconnues (non rattachées) : ${r.unknown.join(' ; ')}`:''));
+      $('#ref-'+key).value=''; }
+    catch(e){ log('ref-log','✕ '+e.message); }
+    b.disabled=false;
+  }));
+}
+// Liens « Gérer les listes » (mode SharePoint) affichés sous les onglets
+function renderRefLinks(){
+  const u=REF.urls; if(!u.agences && !u.agents && !u.motifs) return;
+  const links=[['agences','Agences'],['agents','Agents d\'accueil'],['motifs','Motifs d\'appel']].filter(([k])=>u[k])
+    .map(([k,l])=>`<a href="${esc(u[k])}" target="_blank" rel="noopener">${l}</a>`).join(' · ');
+  const d=document.createElement('div'); d.className='hint no-print'; d.style.cssText='margin:-10px 0 16px 4px';
+  d.innerHTML='Gérer les listes de référence : '+links+' · <a href="#installation" onclick="setTimeout(()=>location.reload(),0)">Vérifier l\'installation</a>'; $('.tabs').after(d);
+}
+boot();
+</script>
+</body>
+</html>
