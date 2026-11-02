@@ -579,10 +579,42 @@ function parseLookup(val, ids, byId){
 function loadLocalRefs(only){
   const want = k => !only || only.includes(k);
   if(want('agences')) REF.agences = CONFIG.agences.map(a=> typeof a==='string' ? {nom:a, dept:''} : {nom:a.nom, dept:normDept(a.departement||'')});
-  if(want('agents')) REF.agents = CONFIG.agents.map(a=> typeof a==='string' ? {nom:a, depts:[], actif:true} : {nom:a.nom, depts:sortDepts(a.departements||[]), actif:a.actif!==false});
+  if(want('agents')) REF.agents = (CONFIG.agents.length ? CONFIG.agents : localAgents()).map(a=> typeof a==='string' ? {nom:a, depts:[], actif:true} : {nom:a.nom, depts:sortDepts(a.departements||[]), actif:a.actif!==false});
   if(want('motifs')) REF.motifs = [...CONFIG.motifs];
   if(want('départements') || want('agences') || want('agents'))
     REF.depts = sortDepts([...(want('départements')?CONFIG.departements:REF.depts), ...REF.agences.map(a=>a.dept), ...REF.agents.flatMap(a=>a.depts)]);
+}
+// Liste des agents chargée sur ce poste uniquement (mode local) : jamais publiée sur GitHub
+const LOCAL_AGENTS_KEY = 'amicial-ecoutes-agents-poste';
+function localAgents(){ try{ return JSON.parse(localStorage.getItem(LOCAL_AGENTS_KEY)||'[]'); }catch(e){ return []; } }
+// Ligne d'en-tête Excel : « Agent… / Agence… / Nom… » sans aucun numéro de département
+function isHeaderRow(first, rest){ return /^(agences?|agents?|nom|prénom)\b/i.test(String(first||'').trim()) && !/\d/.test(rest||''); }
+function parseAgentLines(txt){
+  return txt.split('\n').map(x=>x.trim()).filter(Boolean).map(line=>{
+    const parts = line.includes('\t') ? line.split('\t') : line.split(/;(.*)/s);
+    const rest = parts.slice(1).join(' ');
+    return {nom:(parts[0]||'').trim(), departements: rest.split(/[,;]/).map(x=>normDept(x)).filter(Boolean), header:isHeaderRow(parts[0], rest)};
+  }).filter(a=>a.nom && !a.header).map(({header,...a})=>a);
+}
+function localAgentsPanel(){
+  const n = localAgents().length;
+  const d=document.createElement('div'); d.className='banner info no-print';
+  d.innerHTML = `<div style="width:100%"><b>Liste des agents sur ce poste :</b> ${n ? `${n} agent${n>1?'s':''} chargé${n>1?'s':''}.` : 'aucune.'}
+    <a href="#" id="la-toggle">${n?'Mettre à jour':'Charger la liste'}</a>
+    <div id="la-box" class="hidden" style="margin-top:10px">
+      <div class="hint">Copiez les colonnes A et B de l'onglet « Agents » du fichier Excel et collez-les ici. La liste reste dans ce navigateur, elle n'est publiée nulle part.</div>
+      <textarea id="la-text" rows="6" style="margin-top:6px" placeholder="Prénom NOM&#9;84 – Vaucluse, 13 – Bouches-du-Rhône"></textarea>
+      <button class="btn btn-primary btn-sm" id="la-save" style="margin-top:8px">Enregistrer sur ce poste</button>
+    </div></div>`;
+  d.querySelector('#la-toggle').addEventListener('click', ev=>{ ev.preventDefault(); d.querySelector('#la-box').classList.toggle('hidden'); });
+  d.querySelector('#la-save').addEventListener('click', ()=>{
+    const list = parseAgentLines(d.querySelector('#la-text').value);
+    if(!list.length){ toast('Aucun agent reconnu'); return; }
+    try{ localStorage.setItem(LOCAL_AGENTS_KEY, JSON.stringify(list)); }catch(e){ toast("Le navigateur bloque l'enregistrement"); return; }
+    loadLocalRefs(); form.agent=''; renderForm(); d.replaceWith(localAgentsPanel());
+    toast(`${list.length} agent${list.length>1?'s':''} enregistré${list.length>1?'s':''} sur ce poste`);
+  });
+  return d;
 }
 const agentRef = nom => REF.agents.find(a=>a.nom===nom);
 
@@ -636,7 +668,7 @@ function deptControl(){
   const mine = agentRef(form.agent)?.depts || [];
   const others = REF.depts.filter(d=>!mine.includes(d));
   if(form.departement && !mine.includes(form.departement) && !others.includes(form.departement)) others.push(form.departement);
-  const hint = mine.length ? `Secteur${mine.length>1?'s':''} de l'agent en premier · autres départements possibles en cas de débordement`
+  const hint = !REF.agents.length ? '' : mine.length ? `Secteur${mine.length>1?'s':''} de l'agent en premier · autres départements possibles en cas de débordement`
                            : `Aucun secteur renseigné pour cet agent : tous les départements sont proposés`;
   return `<select data-field="departement"><option value="">— Choisir le département —</option>
       ${mine.length ? `<optgroup label="Secteur${mine.length>1?'s':''} de l'agent">${mine.map(d=>opt(d,form.departement)).join('')}</optgroup>`:''}
@@ -1291,6 +1323,7 @@ async function boot(){
   if(store.mode==='local') loadLocalRefs();
   if(store.mode==='local' && !banners.innerHTML){
     banners.innerHTML = `<div class="banner warn"><div><b>Mode local :</b> les écoutes sont enregistrées dans ce navigateur uniquement. Utilisez « Sauvegarde JSON » régulièrement. Le partage entre évaluateurs nécessite la connexion SharePoint (voir la notice de mise en service).</div></div>`;
+    if(!CONFIG.agents.length) banners.appendChild(localAgentsPanel());
   }
   renderUser(); form=blankForm(); renderForm();
   renderRefLinks();
@@ -1370,8 +1403,8 @@ function showInstaller(diag){
     const rows = raw.map(line=>{
       const parts = line.includes('\t') ? line.split('\t') : line.split(/;(.*)/s);
       const nom = (parts[0]||'').trim(), rest = parts.slice(1).join(' ');
-      return {title:nom, depts: rest.split(/[,;]/).map(x=>x.trim()).filter(Boolean)};
-    }).filter(r=>r.title && !/^(agences?|agents?|nom|prénom)\b/i.test(r.title));   // ignore la ligne d'en-tête Excel
+      return {title:nom, depts: rest.split(/[,;]/).map(x=>x.trim()).filter(Boolean), header:isHeaderRow(nom, rest)};
+    }).filter(r=>r.title && !r.header);   // ignore la ligne d'en-tête Excel
     if(!rows.length){ toast('Rien à ajouter'); return; }
     b.disabled=true;
     try{ const r = await store.addRefItems(key, rows);
