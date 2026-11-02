@@ -283,15 +283,17 @@ const CONFIG_DEFAULTS = {
 
   // --- Listes de référence SharePoint (tenues à jour par le service Qualité) ---
   refLists: {
-    agences: "Ref Agences",             // colonnes : Title (nom de l'agence), Inactif (oui/non)
-    agents:  "Ref Agents",              // colonnes : Title (Prénom Nom), Agences (recherche multiple vers Ref Agences), Inactif
+    departements: "Ref Departements",   // colonnes : Title (« 84 – Vaucluse »), Inactif
+    agences: "Ref Agences",             // colonnes : Title (nom de l'agence), Departement (recherche vers Ref Departements), Inactif
+    agents:  "Ref Agents",              // colonnes : Title (Prénom Nom), Departements (recherche multiple vers Ref Departements), Inactif
     motifs:  "Ref Motifs"               // colonnes : Title (libellé), Ordre (nombre), Inactif
   },
 
   // --- Listes de secours (mode local uniquement, ou si une liste SharePoint est absente) ---
   // Vides = saisie libre avec suggestions.
-  agences: [],                          // ex : ["Avignon", "Carpentras", "Orange"]
-  agents: [],                           // ex : [{nom:"Marie Dupont", agences:["Avignon","Orange"]}]
+  departements: [],                     // ex : ["84 – Vaucluse", "13 – Bouches-du-Rhône"]
+  agences: [],                          // ex : [{nom:"Avignon", departement:"84 – Vaucluse"}]
+  agents: [],                           // ex : [{nom:"Marie Dupont", departements:["84 – Vaucluse","13 – Bouches-du-Rhône"]}]
   motifs: ["Demande d'information","Demande de prestation","Planning / intervention","Facturation","Réclamation","Urgence","Autre"],
 
   // --- Paramètres ---
@@ -334,7 +336,11 @@ const CRITERIA = [
 const CRIT = Object.fromEntries(CRITERIA.map(c=>[c.key,c]));
 const PROFILES = ['Personne accompagnée','Prospect','Famille / entourage / aidant','Partenaire','Salarié','Autre'];
 // Référentiels effectivement utilisés (chargés au démarrage depuis SharePoint ou CONFIG)
-const REF = { agences:[], agents:[], motifs:[], urls:{} };
+const REF = { depts:[], agences:[], agents:[], motifs:[], urls:{} };   // agences : [{nom, dept}] · agents : [{nom, depts, actif}]
+// « 84 - Vaucluse », « 84–Vaucluse » → « 84 – Vaucluse »
+function normDept(s){ return String(s||'').trim().replace(/\s+/g,' ').replace(/^(\d+[AB]?)\s*[-–—]\s*/i,'$1 – '); }
+function deptKey(s){ return normDept(s).toLowerCase(); }
+function sortDepts(a){ return [...new Set(a.map(normDept).filter(Boolean))].sort((x,y)=>x.localeCompare(y,'fr',{numeric:true})); }
 const DURATIONS = [['<2','Moins de 2 min'],['2-5','2 à 5 min'],['>5','Plus de 5 min']];
 
 /* =====================================================================
@@ -431,17 +437,23 @@ const SharePointStore = {
   async loadRefs(){
     const warn=[];
     const isActive = f => !(f.Inactif===true || f.Inactif==='true' || f.Inactif===1 || f.Actif===false || f.Actif==='false' || f.Actif===0);
+    const depById = {};
+    try{
+      const r = await this.readRefList(CONFIG.refLists.departements); REF.urls.departements=r.url;
+      r.items.forEach(f=>{ if(f.id) depById[String(f.id)] = normDept(f.Title); });
+      REF.depts = sortDepts(r.items.filter(isActive).map(f=>f.Title));
+    }catch(e){ warn.push('départements'); }
     try{
       const r = await this.readRefList(CONFIG.refLists.agences); REF.urls.agences=r.url;
-      const byId = {}; r.items.forEach(f=>{ if(f.id) byId[String(f.id)] = f.Title; });
-      this._agenceById = byId;
-      REF.agences = r.items.filter(isActive).map(f=>String(f.Title||'').trim()).filter(Boolean);
+      REF.agences = r.items.filter(isActive).filter(f=>String(f.Title||'').trim())
+        .map(f=>({ nom:String(f.Title).trim(), dept: normDept(parseLookup(f.Departement, f.DepartementLookupId, depById)[0]||'') }));
     }catch(e){ warn.push('agences'); }
     try{
       const r = await this.readRefList(CONFIG.refLists.agents); REF.urls.agents=r.url;
       REF.agents = r.items.filter(f=>String(f.Title||'').trim()).map(f=>({
-        nom: String(f.Title).trim(), actif: isActive(f), agences: parseAgences(f.Agences, f.AgencesLookupId, this._agenceById||{}) }));
+        nom: String(f.Title).trim(), actif: isActive(f), depts: sortDepts(parseLookup(f.Departements, f.DepartementsLookupId, depById)) }));
     }catch(e){ warn.push('agents'); }
+    if(!REF.depts.length) REF.depts = sortDepts([...REF.agences.map(a=>a.dept), ...REF.agents.flatMap(a=>a.depts)]);
     try{
       const r = await this.readRefList(CONFIG.refLists.motifs); REF.urls.motifs=r.url;
       REF.motifs = r.items.filter(isActive).sort((a,b)=>(Number(a.Ordre)||999)-(Number(b.Ordre)||999)).map(f=>String(f.Title||'').trim()).filter(Boolean);
@@ -450,7 +462,7 @@ const SharePointStore = {
   },
   toFields(data, deleted=false){
     const s = scores(data).global;
-    const f = { Title:`${data.callDate||''} · ${data.agent||''}`, DateAppel:data.callDate||'', Agence:data.agence||'', Agent:data.agent||'',
+    const f = { Title:`${data.callDate||''} · ${data.agent||''}`, DateAppel:data.callDate||'', Departement:data.departement||'', Agence:data.agence||'', Agent:data.agent||'',
                 Statut: deleted ? 'Supprimée' : 'Active', Donnees: JSON.stringify(data) };
     if(s!=null) f.Score = Math.round(s*10)/10;
     return f;
@@ -495,7 +507,7 @@ const SharePointStore = {
     diag.lists.forEach(l=>{ if(l.exists) ids[l.key]=l.id; });
     for(const spec of listSpecs()){
       const cur = diag.lists.find(l=>l.key===spec.key);
-      const colDef = c => c.lookup ? {name:c.name, lookup:{listId: ids[c.lookup], columnName:'Title', allowMultipleValues:true}} : c.def;
+      const colDef = c => c.lookup ? {name:c.name, lookup:{listId: ids[c.lookup], columnName:'Title', allowMultipleValues:!!c.multi}} : c.def;
       if(!cur.exists){
         log(`Création de la liste « ${spec.name} »…`);
         const created = await this.graph(`/sites/${this.siteId}/lists`, {...opt, method:'POST', body:JSON.stringify({
@@ -513,27 +525,27 @@ const SharePointStore = {
     return this.diagnose();
   },
   async addRefItems(key, rows){
-    const diag = await this.diagnose(); const l = diag.lists.find(x=>x.key===key);
-    const ag = diag.lists.find(x=>x.key==='agences');
-    let agenceIds = {};
-    if(key==='agents'){
-      const items = await this.readRefList(CONFIG.refLists.agences);
-      items.items.forEach(f=>{ agenceIds[String(f.Title).trim().toLowerCase()] = Number(f.id); });
-    }
-    const existing = new Set((await this.readRefList(l.name)).items.map(f=>String(f.Title||'').trim().toLowerCase()));
-    let added=0, skipped=[], unknown=[];
+    // rows : [{title, depts:[...]}] — les départements manquants sont créés automatiquement
+    const diag = await this.diagnose(); const L = k => diag.lists.find(x=>x.key===k);
+    const depList = L('departements'), target = L(key);
+    const depIds = {}; (await this.readRefList(depList.name)).items.forEach(f=>{ depIds[deptKey(f.Title)] = Number(f.id); });
+    const newDepts=[];
+    const depId = async d => { const k=deptKey(d); if(!k) return null;
+      if(!depIds[k]){ const c = await this.graph(`/sites/${this.siteId}/lists/${depList.id}/items`, {method:'POST', body:JSON.stringify({fields:{Title:normDept(d)}})});
+        depIds[k]=Number(c.id); newDepts.push(normDept(d)); }
+      return depIds[k]; };
+    const existing = new Set((await this.readRefList(target.name)).items.map(f=>String(f.Title||'').trim().toLowerCase()));
+    let added=0, skipped=[];
     for(const r of rows){
       if(existing.has(r.title.toLowerCase())){ skipped.push(r.title); continue; }
       const fields = {Title:r.title};
-      if(key==='agents'){
-        const idsA = r.agences.map(a=>agenceIds[a.toLowerCase()]).filter(Boolean);
-        r.agences.filter(a=>!agenceIds[a.toLowerCase()]).forEach(a=>unknown.push(`${a} (${r.title})`));
-        if(idsA.length){ fields['AgencesLookupId@odata.type']='Collection(Edm.Int32)'; fields.AgencesLookupId=idsA; }
-      }
-      await this.graph(`/sites/${this.siteId}/lists/${l.id}/items`, {method:'POST', body:JSON.stringify({fields})});
+      const ids=[]; for(const d of r.depts){ const id=await depId(d); if(id) ids.push(id); }
+      if(key==='agences' && ids.length) fields.DepartementLookupId = ids[0];
+      if(key==='agents' && ids.length){ fields['DepartementsLookupId@odata.type']='Collection(Edm.Int32)'; fields.DepartementsLookupId=ids; }
+      await this.graph(`/sites/${this.siteId}/lists/${target.id}/items`, {method:'POST', body:JSON.stringify({fields})});
       existing.add(r.title.toLowerCase()); added++;
     }
-    return {added, skipped, unknown};
+    return {added, skipped, newDepts};
   }
 };
 
@@ -543,39 +555,36 @@ function listSpecs(){
   const inactif = {name:'Inactif', def:{name:'Inactif', boolean:{}}};
   return [
     {key:'ecoutes', label:'Écoutes', name:CONFIG.listName, columns:[
-      txt('DateAppel'), txt('Agence'), txt('Agent'),
+      txt('DateAppel'), txt('Departement'), txt('Agence'), txt('Agent'),
       {name:'Score', def:{name:'Score', number:{decimalPlaces:'one'}}},
       txt('Statut'),
       {name:'Donnees', def:{name:'Donnees', text:{allowMultipleLines:true, textType:'plain', linesForEditing:6}}} ]},
-    {key:'agences', label:'Agences', name:CONFIG.refLists.agences, columns:[inactif]},
-    {key:'agents', label:"Agents d'accueil", name:CONFIG.refLists.agents, columns:[{name:'Agences', lookup:'agences'}, inactif]},
+    {key:'departements', label:'Départements', name:CONFIG.refLists.departements, columns:[inactif]},
+    {key:'agences', label:'Agences', name:CONFIG.refLists.agences, columns:[{name:'Departement', lookup:'departements', multi:false}, inactif]},
+    {key:'agents', label:"Agents d'accueil", name:CONFIG.refLists.agents, columns:[{name:'Departements', lookup:'departements', multi:true}, inactif]},
     {key:'motifs', label:"Motifs d'appel", name:CONFIG.refLists.motifs, columns:[{name:'Ordre', def:{name:'Ordre', number:{decimalPlaces:'none'}}}, inactif],
       seed: CONFIG.motifs.map((m,i)=>({Title:m, Ordre:(i+1)*10}))}
   ];
 }
 
-// Lit la colonne « Agences » quel que soit son format (recherche multiple, choix multiple ou texte « A; B »)
-function parseAgences(val, lookupIds, byId){
+// Lit une colonne « recherche » quel que soit son format renvoyé (objet, tableau, texte « A; B » ou identifiants)
+function parseLookup(val, ids, byId){
   let out=[];
   if(Array.isArray(val)) out = val.map(v=> typeof v==='object' && v ? (v.LookupValue ?? byId[String(v.LookupId)]) : v);
-  else if(typeof val==='string') out = val.split(/[;,\n]/);
-  if(!out.length && Array.isArray(lookupIds)) out = lookupIds.map(id=>byId[String(id)]);
+  else if(val && typeof val==='object') out = [val.LookupValue ?? byId[String(val.LookupId)]];
+  else if(typeof val==='string' && val) out = val.split(/[;\n]/);
+  if(!out.filter(Boolean).length && ids!=null && ids!=='') out = (Array.isArray(ids)?ids:[ids]).map(id=>byId[String(id)]);
   return out.map(x=>String(x||'').trim()).filter(Boolean);
 }
 function loadLocalRefs(only){
   const want = k => !only || only.includes(k);
-  if(want('agences')) REF.agences = [...CONFIG.agences];
-  if(want('agents')) REF.agents = CONFIG.agents.map(a=> typeof a==='string' ? {nom:a, agences:[], actif:true} : {nom:a.nom, agences:a.agences||[], actif:a.actif!==false});
+  if(want('agences')) REF.agences = CONFIG.agences.map(a=> typeof a==='string' ? {nom:a, dept:''} : {nom:a.nom, dept:normDept(a.departement||'')});
+  if(want('agents')) REF.agents = CONFIG.agents.map(a=> typeof a==='string' ? {nom:a, depts:[], actif:true} : {nom:a.nom, depts:sortDepts(a.departements||[]), actif:a.actif!==false});
   if(want('motifs')) REF.motifs = [...CONFIG.motifs];
+  if(want('départements') || want('agences') || want('agents'))
+    REF.depts = sortDepts([...(want('départements')?CONFIG.departements:REF.depts), ...REF.agences.map(a=>a.dept), ...REF.agents.flatMap(a=>a.depts)]);
 }
-// Agents proposés pour une agence : ceux qui y sont rattachés (un agent peut couvrir plusieurs agences)
-function agentsFor(agence){
-  const actifs = REF.agents.filter(a=>a.actif);
-  if(!agence) return {list:[], linked:false};
-  const linked = actifs.filter(a=>a.agences.includes(agence));
-  if(linked.length) return {list:linked.map(a=>a.nom).sort((x,y)=>x.localeCompare(y,'fr')), linked:true};
-  return {list:actifs.map(a=>a.nom).sort((x,y)=>x.localeCompare(y,'fr')), linked:false};
-}
+const agentRef = nom => REF.agents.find(a=>a.nom===nom);
 
 const LocalStore = {
   mode:'local', KEY:'amicial-ecoutes-v2', USER_KEY:'amicial-ecoutes-evaluateur',
@@ -603,7 +612,7 @@ async function reload(){ entries = await store.list(); }
    6. FORMULAIRE
    ===================================================================== */
 function blankForm(){
-  return { version:2, agence:'', agent:'', evaluator: currentUser, callDate: todayISO(), callTime:'',
+  return { version:3, agent:'', departement:'', agence:'', evaluator: currentUser, callDate: todayISO(), callTime:'',
     pickupSec:'', rings:'', duration:'', callerProfile:'', callerProfileOther:'', callerRef:'', motif:'',
     isProspect:'', crit:{}, comments:{}, strengths:'', improvements:'' };
 }
@@ -614,21 +623,38 @@ function knownValues(field){
   const set = new Set(entries.filter(e=>!e.meta.deleted).map(e=>e.data[field]).filter(Boolean));
   return [...set].sort((a,b)=>a.localeCompare(b,'fr'));
 }
-function agenceControl(){
-  if(!REF.agences.length) return refField('agence','Agence',[], "Nom de l'agence");
-  const opts=[...REF.agences].sort((a,b)=>a.localeCompare(b,'fr'));
-  if(form.agence && !opts.includes(form.agence)) opts.push(form.agence);
-  return `<select data-field="agence"><option value="">— Choisir l'agence —</option>${opts.map(o=>`<option ${form.agence===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
-}
+const opt = (v, cur, label) => `<option value="${esc(v)}" ${cur===v?'selected':''}>${esc(label??v)}</option>`;
 function agentControl(){
   if(!REF.agents.length) return refField('agent','Agent',[], 'Prénom Nom');
-  if(!form.agence) return `<select data-field="agent" disabled><option>Choisir d'abord l'agence</option></select>`;
-  const {list, linked} = agentsFor(form.agence);
-  const opts=[...list]; if(form.agent && !opts.includes(form.agent)) opts.push(form.agent);
-  const hint = linked ? `${list.length} agent${list.length>1?'s':''} assurant l'accueil de cette agence`
-                      : `Aucun agent rattaché à cette agence dans la liste de référence : tous les agents sont proposés`;
-  return `<select data-field="agent"><option value="">— Choisir l'agent —</option>${opts.map(o=>`<option ${form.agent===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
-          <div class="hint" style="margin-top:5px">${hint}</div>`;
+  const list = REF.agents.filter(a=>a.actif).map(a=>a.nom).sort((x,y)=>x.localeCompare(y,'fr'));
+  if(form.agent && !list.includes(form.agent)) list.push(form.agent);
+  return `<select data-field="agent"><option value="">— Choisir l'agent —</option>${list.map(n=>opt(n,form.agent)).join('')}</select>`;
+}
+function deptControl(){
+  if(!REF.depts.length) return refField('departement','Département',[], '84 – Vaucluse');
+  if(REF.agents.length && !form.agent) return `<select data-field="departement" disabled><option>Choisir d'abord l'agent</option></select>`;
+  const mine = agentRef(form.agent)?.depts || [];
+  const others = REF.depts.filter(d=>!mine.includes(d));
+  if(form.departement && !mine.includes(form.departement) && !others.includes(form.departement)) others.push(form.departement);
+  const hint = mine.length ? `Secteur${mine.length>1?'s':''} de l'agent en premier · autres départements possibles en cas de débordement`
+                           : `Aucun secteur renseigné pour cet agent : tous les départements sont proposés`;
+  return `<select data-field="departement"><option value="">— Choisir le département —</option>
+      ${mine.length ? `<optgroup label="Secteur${mine.length>1?'s':''} de l'agent">${mine.map(d=>opt(d,form.departement)).join('')}</optgroup>`:''}
+      ${others.length ? `<optgroup label="${mine.length?'Autres départements (débordement)':'Départements'}">${others.map(d=>opt(d,form.departement)).join('')}</optgroup>`:''}
+    </select><div class="hint" style="margin-top:5px">${hint}</div>`;
+}
+function agenceControl(){
+  if(!REF.agences.length) return refField('agence','Agence',[], "Nom de l'agence");
+  if(!form.departement) return `<select data-field="agence" disabled><option>Choisir d'abord le département</option></select>`;
+  const byName = (x,y)=>x.nom.localeCompare(y.nom,'fr');
+  const inDept = REF.agences.filter(a=>a.dept===form.departement).sort(byName);
+  const others = REF.agences.filter(a=>a.dept!==form.departement).sort((x,y)=>(x.dept||'zz').localeCompare(y.dept||'zz','fr',{numeric:true}) || byName(x,y));
+  const known = new Set(REF.agences.map(a=>a.nom));
+  const extra = form.agence && !known.has(form.agence) ? [{nom:form.agence, dept:''}] : [];
+  return `<select data-field="agence"><option value="">— Choisir l'agence (selon le monitoring) —</option>
+      ${inDept.length ? `<optgroup label="Agences du ${esc(form.departement)}">${inDept.map(a=>opt(a.nom,form.agence)).join('')}</optgroup>`:''}
+      ${others.length||extra.length ? `<optgroup label="Autres agences (appelant hors secteur)">${[...others,...extra].map(a=>opt(a.nom,form.agence, a.dept? `${a.nom} (${a.dept})` : a.nom)).join('')}</optgroup>`:''}
+    </select><div class="hint" style="margin-top:5px">${inDept.length} agence${inDept.length>1?'s':''} dans ce département</div>`;
 }
 function refField(field, label, configList, placeholder){
   if(configList.length){
@@ -670,9 +696,10 @@ function renderForm(){
   el.innerHTML = `
     ${editBanner}
     ${sectionBlock(1, "L'appel", `
-      <div class="grid2">
-        <div class="field" id="f-agence"><div class="field-label">Agence <span class="req">*</span></div><div id="ctl-agence">${agenceControl()}</div></div>
+      <div class="grid3">
         <div class="field" id="f-agent"><div class="field-label">Agent d'accueil évalué <span class="req">*</span></div><div id="ctl-agent">${agentControl()}</div></div>
+        <div class="field" id="f-departement"><div class="field-label">Département (secteur) <span class="req">*</span></div><div id="ctl-departement">${deptControl()}</div></div>
+        <div class="field" id="f-agence"><div class="field-label">Agence de l'appelant <span class="req">*</span> <span class="hint">rattachement</span></div><div id="ctl-agence">${agenceControl()}</div></div>
       </div>
       <div class="grid3">
         <div class="field" id="f-callDate"><div class="field-label">Date de l'appel <span class="req">*</span></div><input type="date" data-field="callDate" value="${esc(form.callDate)}" max="${todayISO()}"></div>
@@ -718,7 +745,7 @@ function renderForm(){
 }
 
 function requiredKeys(){
-  const keys = ['agence','agent','callDate','pickupSec','duration','callerProfile','isProspect'];
+  const keys = ['agent','departement','agence','callDate','pickupSec','duration','callerProfile','isProspect'];
   CRITERIA.forEach(c=>{ if(isApplicable(form,c)) keys.push(c.key); });
   return keys;
 }
@@ -761,6 +788,7 @@ function toggleProspect(){ $('#prospect-block')?.classList.toggle('hidden', form
 async function saveForm(){
   // harmonise la casse en saisie libre (« marie dupont » → « Marie Dupont »)
   if(!REF.agences.length) form.agence = normName(form.agence);
+  if(!REF.depts.length) form.departement = normDept(form.departement);
   if(!REF.agents.length) form.agent = normName(form.agent);
   $$('.field.missing').forEach(f=>f.classList.remove('missing'));
   const missing = requiredKeys().filter(k=>!isFilled(k));
@@ -804,8 +832,8 @@ function cancelEdit(){ editingId=null; form=blankForm(); renderForm(); switchTab
 /* =====================================================================
    7. FILTRES COMMUNS
    ===================================================================== */
-const filters = { hist:{period:'all', agence:'', agent:'', q:'', showDeleted:false, from:'', to:''},
-                  synth:{period:'12m', agence:'', agent:'', from:'', to:''} };
+const filters = { hist:{period:'all', departement:'', agence:'', agent:'', q:'', showDeleted:false, from:'', to:''},
+                  synth:{period:'12m', departement:'', agence:'', agent:'', from:'', to:''} };
 const PERIODS = [['all','Toutes périodes'],['month','Mois en cours'],['3m','3 derniers mois'],['6m','6 derniers mois'],['12m','12 derniers mois'],['year','Année en cours'],['custom','Période personnalisée']];
 function periodRange(f){
   const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -832,10 +860,11 @@ function applyFilters(f, includeDeleted=false){
     const d = parseDay(e.data.callDate);
     if(from && (!d || d<from)) return false;
     if(to && (!d || d>to)) return false;
+    if(f.departement && e.data.departement!==f.departement) return false;
     if(f.agence && e.data.agence!==f.agence) return false;
     if(f.agent && e.data.agent!==f.agent) return false;
     if(q){
-      const hay = [e.data.agent,e.data.agence,e.data.callerRef,e.data.motif,e.data.strengths,e.data.improvements,...Object.values(e.data.comments||{})].join(' ').toLowerCase();
+      const hay = [e.data.agent,e.data.departement,e.data.agence,e.data.callerRef,e.data.motif,e.data.strengths,e.data.improvements,...Object.values(e.data.comments||{})].join(' ').toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -843,11 +872,13 @@ function applyFilters(f, includeDeleted=false){
 }
 function filterBar(scope){
   const f = filters[scope];
-  const agences = [...new Set([...REF.agences, ...knownValues('agence')])].sort((a,b)=>a.localeCompare(b,'fr'));
+  const agences = [...new Set([...REF.agences.map(a=>a.nom), ...knownValues('agence')])].sort((a,b)=>a.localeCompare(b,'fr'));
+  const depts = sortDepts([...REF.depts, ...knownValues('departement')]);
   const agents = knownValues('agent');
   return `<div class="filters">
     <select data-filter="${scope}.period">${PERIODS.map(([v,l])=>`<option value="${v}" ${f.period===v?'selected':''}>${l}</option>`).join('')}</select>
     ${f.period==='custom' ? `<input type="date" data-filter="${scope}.from" value="${esc(f.from)}" title="Du"><input type="date" data-filter="${scope}.to" value="${esc(f.to)}" title="Au">` : ''}
+    <select data-filter="${scope}.departement"><option value="">Tous les départements</option>${depts.map(d=>`<option ${f.departement===d?'selected':''}>${esc(d)}</option>`).join('')}</select>
     <select data-filter="${scope}.agence"><option value="">Toutes les agences</option>${agences.map(a=>`<option ${f.agence===a?'selected':''}>${esc(a)}</option>`).join('')}</select>
     <select data-filter="${scope}.agent"><option value="">Tous les agents</option>${agents.map(a=>`<option ${f.agent===a?'selected':''}>${esc(a)}</option>`).join('')}</select>
     ${scope==='hist' ? `<input type="search" data-filter="hist.q" placeholder="Rechercher…" value="${esc(f.q)}">
@@ -879,7 +910,7 @@ function entryCard(e){
       <div class="entry-left">
         <div class="score-badge" style="background:${colorFor(sc.global)}">${sc.global==null?'—':Math.round(sc.global)+'%'}</div>
         <div style="min-width:0">
-          <div class="entry-title">${esc(d.agent||'Agent non renseigné')} · ${esc(d.agence||'Agence non renseignée')} ${m.deleted?'<span class="tag" style="background:var(--alert-soft);color:var(--alert)">Supprimée</span>':''}</div>
+          <div class="entry-title">${esc(d.agent||'Agent non renseigné')} · ${esc(d.departement||'Dép. non renseigné')} · appelant ${esc(d.agence||'agence non renseignée')} ${m.deleted?'<span class="tag" style="background:var(--alert-soft);color:var(--alert)">Supprimée</span>':''}</div>
           <div class="entry-sub">${frDate(d.callDate)}${d.callTime?' à '+esc(d.callTime):''} · ${esc(d.callerProfile==='Autre' && d.callerProfileOther ? d.callerProfileOther : (d.callerProfile||'—'))}${d.motif?' · '+esc(d.motif):''} · ${durL} · décroché en ${d.pickupSec===''||d.pickupSec==null?'—':esc(d.pickupSec)+' s'}</div>
         </div>
       </div>
@@ -952,7 +983,7 @@ function renderSynth(){
   const el=$('#view-synth');
   const logo = CONFIG.logoUrl ? `<img src="${esc(CONFIG.logoUrl)}" alt="Amicial">` : `<span class="brand-text">Amicial</span>`;
   const head = `<div class="print-head"><div><h1>Synthèse des écoutes téléphoniques</h1>
-      <div class="ph-sub">Période : ${esc(periodLabel(f))} · ${esc(f.agence||'toutes agences')} · ${esc(f.agent||'tous agents')} · édité le ${new Date().toLocaleDateString('fr-FR')}</div></div>${logo}</div>`;
+      <div class="ph-sub">Période : ${esc(periodLabel(f))} · ${esc(f.departement||'tous départements')} · ${esc(f.agence||'toutes agences')} · ${esc(f.agent||'tous agents')} · édité le ${new Date().toLocaleDateString('fr-FR')}</div></div>${logo}</div>`;
   const toolbar = `<div class="toolbar">${filterBar('synth')}<div class="actions">
       <button class="btn btn-ghost btn-sm" data-act="csv-synth" ${list.length?'':'disabled'}>⬇ Export Excel (CSV)</button>
       <button class="btn btn-primary btn-sm" data-act="print" ${list.length?'':'disabled'}>Rapport PDF</button></div></div>`;
@@ -994,7 +1025,7 @@ function renderSynth(){
 
   el.innerHTML = head + toolbar + `
     <div class="kpis">
-      <div class="kpi"><div class="num">${list.length}</div><div class="lbl">Écoutes analysées</div><div class="sub">${new Set(list.map(e=>e.data.agent)).size} agents · ${new Set(list.map(e=>e.data.agence)).size} agences</div></div>
+      <div class="kpi"><div class="num">${list.length}</div><div class="lbl">Écoutes analysées</div><div class="sub">${new Set(list.map(e=>e.data.agent)).size} agents · ${new Set(list.map(e=>e.data.departement).filter(Boolean)).size} départements</div></div>
       <div class="kpi" style="border-top-color:${hexFor(gAvg)}"><div class="num" style="color:${colorFor(gAvg)}">${pct(gAvg)}</div><div class="lbl">Score qualité moyen</div><div class="sub">tous critères applicables</div></div>
       <div class="kpi" style="border-top-color:${hexFor(conf)}"><div class="num" style="color:${colorFor(conf)}">${pct(conf)}</div><div class="lbl">Conformité Oui / Non</div><div class="sub">${ynO} oui sur ${ynT} réponses</div></div>
       <div class="kpi" style="border-top-color:${hexFor(pickOk)}"><div class="num">${pickAvg==null?'—':fmt(pickAvg)+' s'}</div><div class="lbl">Délai moyen de décrochage</div><div class="sub">${pct(pickOk)} sous ${CONFIG.seuilDecrochageSec} s</div></div>
@@ -1007,8 +1038,11 @@ function renderSynth(){
     </div>
 
     <div class="two-col">
-      <div class="card"><h3>Score par agence</h3><div class="card-sub">n = nombre d'écoutes : prudence sous 3 écoutes</div>${barRows(groupScores(list,'agence'))}</div>
-      <div class="card"><h3>Score par agent</h3><div class="card-sub">n = nombre d'écoutes : prudence sous 3 écoutes</div>${barRows(groupScores(list,'agent'))}</div>
+      <div class="card"><h3>Score par agent</h3><div class="card-sub">Mesure de la qualité d'accueil · n = nombre d'écoutes (prudence sous 3)</div>${barRows(groupScores(list,'agent'))}</div>
+      <div class="card"><h3>Score par département</h3><div class="card-sub">Secteur traité au moment de l'appel · n = nombre d'écoutes</div>${barRows(groupScores(list,'departement'))}</div>
+    </div>
+    <div class="card"><h3>Score par agence de rattachement de l'appelant</h3><div class="card-sub">Qualité de l'accueil reçue par les appelants de chaque agence (l'accueil est assuré par les agents du secteur, pas par l'agence elle-même)</div>
+      ${barRows(groupScores(list,'agence'))}
     </div>
 
     <div class="card"><h3>Résultats par critère</h3><div class="card-sub">Classés du plus fragile au plus solide · les critères non applicables ne sont pas comptés</div>
@@ -1079,12 +1113,12 @@ function download(name, content, type){
 }
 function exportCSV(list){
   if(!list.length){ toast('Aucune écoute à exporter'); return; }
-  const H = ["Date","Heure","Agence","Agent évalué","Évaluateur","Délai de décrochage (s)","Sonneries","Durée","Profil appelant","Précision profil","Réf. appelant","Motif","Demande de prestation"];
+  const H = ["Date","Heure","Agent évalué","Département (secteur)","Agence de l'appelant","Évaluateur","Délai de décrochage (s)","Sonneries","Durée","Profil appelant","Précision profil","Réf. appelant","Motif","Demande de prestation"];
   CRITERIA.forEach(c=>H.push(c.short)); CRITERIA.forEach(c=>H.push(c.short+' · commentaire'));
   SECTIONS.forEach(s=>H.push('Score '+s.label+' (%)')); H.push('Score global (%)','Points de vigilance','Points forts',"Axes d'amélioration",'Saisie par','Saisie le','Modifiée par','Modifiée le');
   const rows = list.map(e=>{
     const d=e.data, sc=scores(d), m=e.meta;
-    const r=[d.callDate?frDate(d.callDate):'', d.callTime||'', d.agence, d.agent, d.evaluator, d.pickupSec, d.rings, (DURATIONS.find(x=>x[0]===d.duration)||[,''])[1],
+    const r=[d.callDate?frDate(d.callDate):'', d.callTime||'', d.agent, d.departement||'', d.agence, d.evaluator, d.pickupSec, d.rings, (DURATIONS.find(x=>x[0]===d.duration)||[,''])[1],
       d.callerProfile, d.callerProfileOther, d.callerRef, d.motif, d.isProspect==='oui'?'Oui':'Non'];
     CRITERIA.forEach(c=>{ if(!isApplicable(d,c)){ r.push('N/A'); return; } const v=d.crit?.[c.key];
       r.push(v==null||v===''?'':(v==='na'?'N/A':(c.type==='yn'?(v==='oui'?'Oui':'Non'):v))); });
@@ -1123,7 +1157,7 @@ function fromLegacyCSV(rows){
   const SC={"Respect circuit traitement":'circuitRespect',"Procédure EI / Réclamations / Urgences":'eiProcedure',"Traçabilité":'traceability',"Attitude courtoise":'courtesy',"Écoute active":'activeListening',"Résumé des actions":'summarizeActions',"Prise de congé":'politeClosing'};
   return rows.slice(1).map(r=>{
     const g=n=>{ const i=idx(n); return i<0?'':(r[i]||'').trim(); };
-    const d=blankForm(); d.evaluator=''; d.callDate=g("Date de l'appel"); d.agent=normName(g('Agent évalué')); d.agence='Non renseignée';
+    const d=blankForm(); d.evaluator=''; d.callDate=g("Date de l'appel"); d.agent=normName(g('Agent évalué')); d.agence='Non renseignée'; d.departement='';
     d.callerRef=initials(g("Nom de l'appelant")); d.callerProfile=g("Profil de l'appelant")==='Famille/Entourage/ Aidant'?'Famille / entourage / aidant':g("Profil de l'appelant");
     d.callerProfileOther=g('Profil (autre)');
     const pt=g('Temps de décrochage'); const sec=pt.match(/(\d+)\s*(?:secondes?|sec|s)\b/i); const ring=pt.match(/(\d+)\s*sonn/i);
@@ -1210,10 +1244,12 @@ document.addEventListener('change', ev=>{
   const t=ev.target;
   if(t.dataset.field && t.tagName==='SELECT'){
     form[t.dataset.field]=t.value; t.closest('.field')?.classList.remove('missing');
-    if(t.dataset.field==='agence' && REF.agents.length){
-      if(form.agent && !agentsFor(form.agence).list.includes(form.agent)) form.agent='';
-      $('#ctl-agent').innerHTML = agentControl();
+    if(t.dataset.field==='agent'){
+      const mine = agentRef(form.agent)?.depts || [];
+      if(mine.length===1){ if(form.departement!==mine[0]){ form.departement=mine[0]; form.agence=''; } }  // un seul secteur : sélection automatique
+      $('#ctl-departement').innerHTML = deptControl(); $('#ctl-agence').innerHTML = agenceControl();
     }
+    if(t.dataset.field==='departement'){ form.agence=''; $('#ctl-agence').innerHTML = agenceControl(); }
     updateProgress();
   }
   if(t.dataset.filter && t.dataset.filter!=='hist.q'){
@@ -1240,6 +1276,7 @@ async function boot(){
     const r = await store.init(); currentUser = r.user || '';
     await reload();
     loadLocalRefs();
+    if(store.mode==='sharepoint') offerLocalTransfer();
     const missingRefs = store.mode==='sharepoint' ? await store.loadRefs() : [];
     if(missingRefs.length){
       loadLocalRefs(missingRefs);
@@ -1257,6 +1294,25 @@ async function boot(){
   }
   renderUser(); form=blankForm(); renderForm();
   renderRefLinks();
+}
+// Écoutes saisies en mode local sur ce poste avant la connexion SharePoint : proposition de transfert
+function offerLocalTransfer(){
+  const local = LocalStore.read().filter(e=>!e.meta?.deleted);
+  if(!local.length) return;
+  const d=document.createElement('div'); d.className='banner info';
+  d.innerHTML = `<div><b>${local.length} écoute${local.length>1?'s':''} saisie${local.length>1?'s':''} en mode local sur ce poste.</b> Les transférer maintenant dans SharePoint ? Les doublons sont ignorés.<br><br>
+    <button class="btn btn-primary btn-sm" id="btn-transfer">Transférer vers SharePoint</button></div>`;
+  $('#banners').prepend(d);
+  d.querySelector('#btn-transfer').addEventListener('click', async ev=>{
+    ev.target.disabled=true; ev.target.textContent='Transfert…';
+    const sig = x=>[x.callDate,x.agent,x.callerRef,JSON.stringify(x.crit)].join('|');
+    const have = new Set(entries.map(e=>sig(e.data))); let ok=0, ko=0;
+    for(const e of local){ if(have.has(sig(e.data))) continue; try{ await store.create(e.data); ok++; }catch(err){ ko++; console.error(err); } }
+    if(!ko){ try{ localStorage.setItem(LocalStore.KEY+'-transfere-'+Date.now(), localStorage.getItem(LocalStore.KEY)); localStorage.removeItem(LocalStore.KEY); }catch(err){} }
+    await reload(); d.remove();
+    toast(ko ? `${ok} transférée(s), ${ko} en échec : réessayez` : `${ok} écoute(s) transférée(s) dans SharePoint`, 5000);
+    if(currentTab==='hist') renderHistory();
+  });
 }
 function hideMain(){ $('.tabs').classList.add('hidden'); ['form','hist','synth'].forEach(t=>$('#view-'+t).classList.add('hidden')); }
 function showFatal(e){
@@ -1287,13 +1343,15 @@ function showInstaller(diag){
     <div class="card ${diag.ok?'':'hidden'}" id="card-ref"><h3><span class="steps-num">2</span>Remplir les listes de référence <span class="hint">(facultatif : vous pouvez aussi le faire dans SharePoint)</span></h3>
       <div class="card-sub">Les doublons sont ignorés. Vous pourrez corriger ensuite directement dans les listes SharePoint.</div>
       <div class="two-col">
-        <div><div class="field-label">Agences <span class="hint">une par ligne</span></div>
-          <textarea id="ref-agences" rows="8" placeholder="Avignon&#10;Carpentras&#10;Orange"></textarea>
+        <div><div class="field-label">Agences <span class="hint">« Agence ; 84 – Vaucluse » ou 2 colonnes Excel</span></div>
+          <textarea id="ref-agences" rows="8" placeholder="Avignon ; 84 – Vaucluse&#10;Carpentras ; 84 – Vaucluse&#10;Marseille ; 13 – Bouches-du-Rhône"></textarea>
           <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ref="agences">Ajouter les agences</button></div>
-        <div><div class="field-label">Agents d'accueil <span class="hint">« Prénom Nom ; Agence 1, Agence 2 »</span></div>
-          <textarea id="ref-agents" rows="8" placeholder="Marie Dupont ; Avignon, Orange&#10;Paul Martin ; Carpentras"></textarea>
-          <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ref="agents">Ajouter les agents</button>
-          <div class="hint" style="margin-top:4px">Ajoutez d'abord les agences : les agents y sont rattachés par leur nom exact.</div></div>
+        <div><div class="field-label">Agents d'accueil <span class="hint">« Prénom Nom ; 84 – Vaucluse, 13 – … » ou 2 colonnes Excel</span></div>
+          <textarea id="ref-agents" rows="8" placeholder="Marie Dupont ; 84 – Vaucluse, 13 – Bouches-du-Rhône&#10;Paul Martin ; 13 – Bouches-du-Rhône"></textarea>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ref="agents">Ajouter les agents</button></div>
+      </div>
+      <div class="hint" style="margin-top:8px">Les départements sont créés automatiquement dans « Ref Departements » au format « 84 – Vaucluse » (« 84 - Vaucluse » est accepté et corrigé). Vérifiez la liste des départements créés affichée ci-dessous pour repérer une éventuelle faute de frappe.</div>
+      <div>
       </div>
       <div class="install-log" id="ref-log"></div>
     </div>
@@ -1309,12 +1367,15 @@ function showInstaller(diag){
   });
   v.querySelectorAll('[data-ref]').forEach(b=>b.addEventListener('click', async ()=>{
     const key=b.dataset.ref; const raw=$('#ref-'+key).value.split('\n').map(x=>x.trim()).filter(Boolean);
-    const rows = raw.map(line=>{ if(key==='agences') return {title:line};
-      const [nom, ag=''] = line.split(';'); return {title:nom.trim(), agences: ag.split(',').map(x=>x.trim()).filter(Boolean)}; }).filter(r=>r.title);
+    const rows = raw.map(line=>{
+      const parts = line.includes('\t') ? line.split('\t') : line.split(/;(.*)/s);
+      const nom = (parts[0]||'').trim(), rest = parts.slice(1).join(' ');
+      return {title:nom, depts: rest.split(/[,;]/).map(x=>x.trim()).filter(Boolean)};
+    }).filter(r=>r.title && !/^(agences?|agents?|nom|prénom)\b/i.test(r.title));   // ignore la ligne d'en-tête Excel
     if(!rows.length){ toast('Rien à ajouter'); return; }
     b.disabled=true;
     try{ const r = await store.addRefItems(key, rows);
-      log('ref-log', `${key==='agences'?'Agences':'Agents'} : ${r.added} ajouté(s)` + (r.skipped.length?`, ${r.skipped.length} déjà présent(s)`:'') + (r.unknown.length?`\n⚠ Agences inconnues (non rattachées) : ${r.unknown.join(' ; ')}`:''));
+      log('ref-log', `${key==='agences'?'Agences':'Agents'} : ${r.added} ajouté(s)` + (r.skipped.length?`, ${r.skipped.length} déjà présent(s)`:'') + (r.newDepts.length?`\nDépartements créés : ${r.newDepts.join(' · ')}`:''));
       $('#ref-'+key).value=''; }
     catch(e){ log('ref-log','✕ '+e.message); }
     b.disabled=false;
@@ -1323,7 +1384,7 @@ function showInstaller(diag){
 // Liens « Gérer les listes » (mode SharePoint) affichés sous les onglets
 function renderRefLinks(){
   const u=REF.urls; if(!u.agences && !u.agents && !u.motifs) return;
-  const links=[['agences','Agences'],['agents','Agents d\'accueil'],['motifs','Motifs d\'appel']].filter(([k])=>u[k])
+  const links=[['departements','Départements'],['agences','Agences'],['agents','Agents d\'accueil'],['motifs','Motifs d\'appel']].filter(([k])=>u[k])
     .map(([k,l])=>`<a href="${esc(u[k])}" target="_blank" rel="noopener">${l}</a>`).join(' · ');
   const d=document.createElement('div'); d.className='hint no-print'; d.style.cssText='margin:-10px 0 16px 4px';
   d.innerHTML='Gérer les listes de référence : '+links+' · <a href="#installation" onclick="setTimeout(()=>location.reload(),0)">Vérifier l\'installation</a>'; $('.tabs').after(d);
