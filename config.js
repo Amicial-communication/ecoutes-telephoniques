@@ -7,7 +7,8 @@ window.AMICIAL_ECOUTES_CONFIG = {
 
   // ---- Connexion Microsoft 365 -----------------------------------------
   tenantId: "amicial.fr",               // domaine Microsoft 365 d'Amicial (ou ID de l'annuaire)
-  clientId: "",                         // ⬅ À COLLER : « ID d'application (client) » transmis par le SI
+  clientId: "79ce6233-3131-474b-8fd6-c0ed331b3ec0
+ ",                         // ⬅ À COLLER : « ID d'application (client) » transmis par le SI
                                         //   Tant qu'il est vide, l'outil fonctionne en mode local (test).
 
   // ---- Site SharePoint qui héberge les listes ---------------------------
