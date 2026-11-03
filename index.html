@@ -1383,6 +1383,8 @@ function showInstaller(diag){
         ${diag.ok ? '<span class="st-ok">Toutes les listes sont en place.</span>' : '<button class="btn btn-primary" id="btn-install">Créer automatiquement les éléments manquants</button>'}
         <span class="hint">Nécessite d'être propriétaire du site (droit « Gérer les listes »).</span>
       </div>
+      <div class="banner info" style="margin-top:12px"><div><b>Vous êtes évaluatrice ou membre de la Qualité ?</b> Si l'outil est déjà installé, cet écran signifie que votre compte n'a pas encore accès aux listes. Ne créez rien : demandez l'accès au service Qualité.</div>
+      </div>
       <div class="install-log" id="install-log"></div>
     </div>
     <div class="card ${diag.ok?'':'hidden'}" id="card-ref"><h3><span class="steps-num">2</span>Remplir les listes de référence <span class="hint">(facultatif : vous pouvez aussi le faire dans SharePoint)</span></h3>
