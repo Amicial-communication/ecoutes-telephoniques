@@ -57,5 +57,5 @@ window.AMICIAL_ECOUTES_CONFIG = {
 
   // ---- Paramètres -------------------------------------------------------
   seuilDecrochageSec: 15,               // objectif de délai de décrochage (secondes)
-  logoUrl: ""                           // ex : "logo-amicial.svg" (fichier déposé à côté de index.html)
+  logoUrl: "logo-amicial.png"                           // ex : "logo-amicial.svg" (fichier déposé à côté de index.html)
 };
