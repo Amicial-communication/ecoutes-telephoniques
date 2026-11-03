@@ -1336,8 +1336,14 @@ function offerLocalTransfer(){
   if(!local.length) return;
   const d=document.createElement('div'); d.className='banner info';
   d.innerHTML = `<div><b>${local.length} écoute${local.length>1?'s':''} saisie${local.length>1?'s':''} en mode local sur ce poste.</b> Les transférer maintenant dans SharePoint ? Les doublons sont ignorés.<br><br>
-    <button class="btn btn-primary btn-sm" id="btn-transfer">Transférer vers SharePoint</button></div>`;
+    <button class="btn btn-primary btn-sm" id="btn-transfer">Transférer vers SharePoint</button>
+    <button class="btn btn-ghost btn-sm" id="btn-discard" style="margin-left:6px">Ne pas transférer et effacer de ce poste</button></div>`;
   $('#banners').prepend(d);
+  d.querySelector('#btn-discard').addEventListener('click', ()=>{
+    if(!confirm(`Effacer définitivement les ${local.length} écoute(s) restées sur ce poste, sans les envoyer dans SharePoint ?\n\nÀ utiliser si ces écoutes sont déjà dans SharePoint (par exemple l'historique importé par un autre poste).`)) return;
+    try{ localStorage.setItem(LocalStore.KEY+'-ecarte-'+Date.now(), localStorage.getItem(LocalStore.KEY)); localStorage.removeItem(LocalStore.KEY); }catch(err){}
+    d.remove(); toast('Écoutes locales effacées de ce poste');
+  });
   d.querySelector('#btn-transfer').addEventListener('click', async ev=>{
     ev.target.disabled=true; ev.target.textContent='Transfert…';
     const sig = x=>[x.callDate,x.agent,x.callerRef,JSON.stringify(x.crit)].join('|');
