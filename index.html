@@ -977,6 +977,7 @@ function renderHistory(){
         <button class="btn btn-ghost btn-sm" data-act="csv-hist" ${active.length?'':'disabled'}>⬇ Export Excel (CSV)</button>
         <button class="btn btn-ghost btn-sm" data-act="backup">Sauvegarde JSON</button>
         <button class="btn btn-ghost btn-sm" data-act="import">Importer…</button>
+        ${store.mode==='local' ? '<button class="btn btn-danger btn-sm" data-act="reset-local">Vider ce poste</button>' : ''}
       </div>
     </div>
     <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
@@ -1261,6 +1262,7 @@ document.addEventListener('click', ev=>{
     if(a==='csv-synth') exportCSV(applyFilters(filters.synth));
     if(a==='backup') exportBackup();
     if(a==='import') $('#import-file').click();
+    if(a==='reset-local') resetLocal();
     if(a==='print'){ Object.values(charts).forEach(c=>c.resize()); setTimeout(()=>window.print(), 150); }
     return;
   }
@@ -1346,6 +1348,16 @@ function offerLocalTransfer(){
     toast(ko ? `${ok} transférée(s), ${ko} en échec : réessayez` : `${ok} écoute(s) transférée(s) dans SharePoint`, 5000);
     if(currentTab==='hist') renderHistory();
   });
+}
+// Mode local : efface toutes les écoutes de ce poste (une sauvegarde JSON est téléchargée avant)
+function resetLocal(){
+  const n = LocalStore.read().length;
+  if(!n){ toast('Aucune écoute sur ce poste'); return; }
+  if(!confirm(`Effacer les ${n} écoute(s) enregistrées sur ce poste ?\n\nUne sauvegarde JSON va d'abord être téléchargée. La liste des agents chargée sur ce poste est conservée.`)) return;
+  exportBackup();
+  if(!confirm('La sauvegarde est-elle bien téléchargée ? Confirmer l\'effacement définitif.')) return;
+  try{ localStorage.removeItem(LocalStore.KEY); }catch(e){}
+  entries=[]; renderHistory(); toast('Ce poste a été vidé');
 }
 function hideMain(){ $('.tabs').classList.add('hidden'); ['form','hist','synth'].forEach(t=>$('#view-'+t).classList.add('hidden')); }
 function showFatal(e){
